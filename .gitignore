@@ -1,0 +1,12 @@
+.idea/
+.cache/
+.vscode/
+.xmake/
+
+build/
+compile_commands.json
+
+# MacOS
+.DS_Store
+._*
+.Spotlight-V100
