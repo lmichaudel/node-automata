@@ -21,7 +21,11 @@ bool Platform::init() {
 	return true;
 }
 
-void Platform::start() {
+void Platform::start(void (*tick)(void), void (*update)(void), void (*draw)(void)) {
+	const u64 performance_frequency = SDL_GetPerformanceFrequency();
+	u64 last_counter = SDL_GetPerformanceCounter();
+	f32 accumulator = 0.0f;
+
 	is_running = true;
 
 	SDL_Event event;
@@ -35,9 +39,20 @@ void Platform::start() {
 			}
 		}
 
-		g_renderer->begin_frame();
+		u64 now = SDL_GetPerformanceCounter();
+		dt_ = static_cast<f32>(now - last_counter) / static_cast<f32>(performance_frequency);
+		last_counter = now;
+		accumulator += dt_;
 
-		g_renderer->draw_circle(vec2{640.0F, 360.0F}, 100.0F, vec4{1.0F});
+		while (accumulator >= DT) {
+			tick();
+			accumulator -= DT;
+		}
+
+		update();
+
+		g_renderer->begin_frame();
+		draw();
 		if (!g_renderer->end_frame()) {
 			is_running = false;
 		}

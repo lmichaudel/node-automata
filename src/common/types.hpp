@@ -22,3 +22,5 @@ constexpr ID INVALID_ID = UINT32_MAX;
 
 #include <glm/glm.hpp>
 using namespace glm;
+
+using vec2i = vec<2, i32>;
