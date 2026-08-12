@@ -1,6 +1,9 @@
 #include "belt.hpp"
+#include "common/globals.hpp"
 
 #include <algorithm>
+#include <cassert>
+#include <cmath>
 #include <utility>
 
 BeltSimulationData::BeltSimulationData(u32 tile_count) {
@@ -217,5 +220,47 @@ void BeltSimulationData::pop_head() {
 
 			++first_gap_offset_;
 		}
+	}
+}
+
+void belt_draw(BeltRenderData& rd, BeltConnectionData& cd) {
+	(void)cd;
+
+	if (rd.waypoints.size() < 2)
+		return;
+
+	constexpr f32 BELT_WIDTH = 13.0F;
+	constexpr f32 CORNER_EXTENSION = BELT_WIDTH * 0.5F;
+	constexpr vec4 BELT_COLOR{0.28F, 0.34F, 0.42F, 1.0F};
+	constexpr u8 BELT_LAYER = 2;
+	const auto is_corner = [&](usize waypoint) {
+		if (waypoint == 0 || waypoint + 1 >= rd.waypoints.size())
+			return false;
+
+		const vec2i incoming = rd.waypoints[waypoint] - rd.waypoints[waypoint - 1];
+		const vec2i outgoing = rd.waypoints[waypoint + 1] - rd.waypoints[waypoint];
+		return (incoming.x == 0) != (outgoing.x == 0);
+	};
+
+	for (usize i = 1; i < rd.waypoints.size(); ++i) {
+		const vec2i from = rd.waypoints[i - 1];
+		const vec2i to = rd.waypoints[i];
+		const vec2i delta = to - from;
+
+		assert((delta.x == 0) != (delta.y == 0));
+
+		const f32 segment_length =
+			std::abs(static_cast<f32>(delta.x)) + std::abs(static_cast<f32>(delta.y));
+		const vec2 direction = vec2{delta} / segment_length;
+		const f32 start_extension = is_corner(i - 1) ? CORNER_EXTENSION : 0.0F;
+		const f32 end_extension = is_corner(i) ? CORNER_EXTENSION : 0.0F;
+		const f32 extended_length = segment_length + start_extension + end_extension;
+		const vec2 size =
+			delta.x == 0 ? vec2{BELT_WIDTH, extended_length} : vec2{extended_length, BELT_WIDTH};
+		const vec2 center =
+			(vec2{from} + vec2{to}) * 0.5F + direction * (end_extension - start_extension) * 0.5F;
+
+		g_renderer->draw_rounded_rect(center - size * 0.5F, size, 0.0F, BELT_COLOR, 0.0F,
+									  BELT_LAYER);
 	}
 }

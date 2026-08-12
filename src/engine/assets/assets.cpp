@@ -35,10 +35,31 @@ namespace {
 		}
 
 		const char* base_path = SDL_GetBasePath();
-		if (base_path == nullptr) {
-			return nullptr;
+		return base_path != nullptr ? IMG_Load(join_path(base_path, relative_path).c_str())
+									: nullptr;
+	}
+
+	bool load_text(std::string& output, std::string_view root, std::string_view path) {
+		auto try_load = [&output](const std::string& filename) {
+			size_t size = 0;
+			void* data = SDL_LoadFile(filename.c_str(), &size);
+			if (data == nullptr) {
+				return false;
+			}
+			output.assign(static_cast<const char*>(data), size);
+			SDL_free(data);
+			return true;
+		};
+
+		if (absolute_path(path)) {
+			return try_load(std::string{path});
 		}
-		return IMG_Load(join_path(base_path, relative_path).c_str());
+		const std::string relative_path = join_path(root, path);
+		if (try_load(relative_path)) {
+			return true;
+		}
+		const char* base_path = SDL_GetBasePath();
+		return base_path != nullptr && try_load(join_path(base_path, relative_path));
 	}
 } // namespace
 
@@ -52,40 +73,41 @@ bool Assets::init(SDL_GPUDevice* target_device, std::string_view asset_root) {
 	}
 	device = target_device;
 	root = asset_root;
+
+	for (usize index = 0; index < FONT_COUNT; ++index) {
+		if (!load_font(index, FONT_PATHS[index])) {
+			release();
+			return false;
+		}
+	}
 	return true;
 }
 
 void Assets::release() {
-	textures.clear();
+	for (FontResource& resource : fonts) {
+		resource.font.release();
+		resource.texture.release();
+	}
 	root.clear();
 	device = nullptr;
 }
 
-Texture* Assets::load_texture(std::string_view path, TextureFilter filter) {
-	if (device == nullptr || path.empty()) {
-		return nullptr;
-	}
-
-	const std::string key = texture_key(path, filter);
-	if (const auto found = textures.find(key); found != textures.end()) {
-		return found->second.get();
-	}
-
+bool Assets::load_texture(Texture& texture, std::string_view path, TextureFilter filter) const {
 	SDL_Surface* loaded = load_surface(root, path);
 	if (loaded == nullptr) {
 		log::error("Failed to load texture '{}': {}", path, SDL_GetError());
-		return nullptr;
+		return false;
 	}
 	SDL_Surface* rgba = SDL_ConvertSurface(loaded, SDL_PIXELFORMAT_RGBA32);
 	SDL_DestroySurface(loaded);
 	if (rgba == nullptr) {
 		log::error("Failed to convert texture '{}' to RGBA8: {}", path, SDL_GetError());
-		return nullptr;
+		return false;
 	}
 	if (rgba->w <= 0 || rgba->h <= 0 || !SDL_LockSurface(rgba)) {
 		log::error("Failed to access texture '{}': {}", path, SDL_GetError());
 		SDL_DestroySurface(rgba);
-		return nullptr;
+		return false;
 	}
 
 	const usize row_size = static_cast<usize>(rgba->w) * 4;
@@ -97,34 +119,33 @@ Texture* Assets::load_texture(std::string_view path, TextureFilter filter) {
 	}
 	SDL_UnlockSurface(rgba);
 
-	auto texture = std::make_unique<Texture>();
 	const bool uploaded =
-		texture->init(device, static_cast<u32>(rgba->w), static_cast<u32>(rgba->h), pixels, filter);
+		texture.init(device, static_cast<u32>(rgba->w), static_cast<u32>(rgba->h), pixels, filter);
 	SDL_DestroySurface(rgba);
 	if (!uploaded) {
-		log::error("Failed to upload texture '{}'", path);
-		return nullptr;
+		log::error("Failed to upload texture '{}': {}", path, SDL_GetError());
+		return false;
+	}
+	return true;
+}
+
+bool Assets::load_font(usize index, std::string_view path) {
+	const std::string image_path = std::string{path} + ".png";
+	const std::string metadata_path = std::string{path} + ".json";
+
+	FontResource& resource = fonts[index];
+	if (!load_texture(resource.texture, image_path)) {
+		return false;
 	}
 
-	Texture* result = texture.get();
-	textures.emplace(key, std::move(texture));
-	return result;
-}
+	std::string metadata;
+	if (!load_text(metadata, root, metadata_path)) {
+		log::error("Failed to load font metadata '{}': {}", metadata_path, SDL_GetError());
+		return false;
+	}
 
-Texture* Assets::get_texture(std::string_view path, TextureFilter filter) const {
-	const auto found = textures.find(texture_key(path, filter));
-	return found != textures.end() ? found->second.get() : nullptr;
-}
-
-bool Assets::unload_texture(std::string_view path, TextureFilter filter) {
-	return textures.erase(texture_key(path, filter)) != 0;
-}
-
-std::string Assets::texture_key(std::string_view path, TextureFilter filter) const {
-	std::string key;
-	key.reserve(path.size() + 2);
-	key.push_back(filter == TextureFilter::Nearest ? 'n' : 'l');
-	key.push_back(':');
-	key.append(path);
-	return key;
+	if (!resource.font.init(&resource.texture, metadata, metadata_path)) {
+		return false;
+	}
+	return true;
 }

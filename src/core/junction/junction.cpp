@@ -1,4 +1,5 @@
 #include "junction.hpp"
+#include "common/globals.hpp"
 
 #include <cassert>
 
@@ -32,4 +33,11 @@ bool JunctionSimulationData::try_transfer(Item item, u8 buffer_id) {
 	}
 
 	return false;
+}
+
+void junction_draw(JunctionRenderData& rd, JunctionConnectionData& cd) {
+	(void)cd;
+
+	g_renderer->draw_rounded_rect((vec2)rd.grid_position - vec2{9.5f}, vec2{20.0f}, 2.0f,
+								  vec4{1.0f});
 }

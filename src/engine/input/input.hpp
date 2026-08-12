@@ -21,10 +21,14 @@ class Input {
 		return mouse_pos;
 	}
 	vec2 mouse_delta() const {
-		return mouse_motion;
+		return capture_mouse ? vec2{0.0F} : mouse_motion;
 	}
 	vec2 wheel_delta() const {
-		return wheel_motion;
+		return capture_mouse ? vec2{0.0F} : wheel_motion;
+	}
+	void set_capture(bool keyboard, bool mouse) {
+		capture_keyboard = keyboard;
+		capture_mouse = mouse;
 	}
 
   private:
@@ -41,6 +45,8 @@ class Input {
 	vec2 mouse_pos{0.0F};
 	vec2 mouse_motion{0.0F};
 	vec2 wheel_motion{0.0F};
+	bool capture_keyboard{false};
+	bool capture_mouse{false};
 
 	friend class Platform;
 	void begin_frame();

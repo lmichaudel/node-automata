@@ -8,26 +8,19 @@ set_warnings("allextra")
 
 add_rules("mode.debug", "mode.release")
 
-add_requires("libsdl3", "libsdl3_image", "glm")
+add_requires("libsdl3", "libsdl3_image", "glm", "nlohmann_json")
+add_requires("imgui", {configs = {sdl3 = true, sdl3_gpu = true}})
 
-includes("shaders/xmake.lua")
+includes("shaders/xmake.lua", "res/xmake.lua")
 
 target("node-automata")
     set_kind("binary")
+    add_rules("resources")
     add_files("src/**.cpp")
     add_files("shaders/**.hlsl", {rule = "hlsl"})
     add_headerfiles("src/**.hpp")
     add_includedirs("src")
-    add_packages("libsdl3", "libsdl3_image", "glm")
-
-    after_build(function (target)
-        local asset_dir = path.join(os.projectdir(), "assets")
-        if os.isdir(asset_dir) then
-            local target_asset_dir = path.join(target:targetdir(), "assets")
-            os.rm(target_asset_dir)
-            os.cp(asset_dir, target_asset_dir)
-        end
-    end)
+    add_packages("libsdl3", "libsdl3_image", "glm", "nlohmann_json", "imgui")
 
     if is_plat("windows") then
         add_cxxflags("/GR-", "/EHs-c-", {force = true})

@@ -14,6 +14,9 @@ class Platform {
 	SDL_Window* window_handle() const {
 		return window;
 	}
+	f32 delta_time() const {
+		return dt_;
+	}
 
   private:
 	SDL_Window* window{nullptr};

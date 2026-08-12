@@ -7,7 +7,7 @@
 
 class Game {
   public:
-	Game() = default;
+	Game();
 
 	void tick();
 	void update();
@@ -25,8 +25,15 @@ class Game {
 		return junctions;
 	}
 
+	ID create_machine(MachineType type, vec2i position);
+	ID create_belt();
+	ID create_junction(vec2i position);
+
   private:
-	Pool<MachineSimulationData, MachineRenderData> machines;
-	Pool<BeltSimulationData, BeltRenderData> belts;
-	Pool<JunctionSimulationData, JunctionRenderData> junctions;
+	vec2 view_position{0.0F};
+	f32 view_zoom{1.0F};
+
+	Pool<MachineSimulationData, MachineRenderData, MachineConnectionData> machines{};
+	Pool<BeltSimulationData, BeltRenderData, BeltConnectionData> belts{};
+	Pool<JunctionSimulationData, JunctionRenderData, JunctionConnectionData> junctions{};
 };

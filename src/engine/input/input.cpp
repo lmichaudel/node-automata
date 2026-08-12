@@ -72,27 +72,27 @@ void Input::handle_event(const SDL_Event& event) {
 }
 
 bool Input::key_down(SDL_Scancode key) const {
-	return valid_key(key) && keys_down.test(static_cast<usize>(key));
+	return !capture_keyboard && valid_key(key) && keys_down.test(static_cast<usize>(key));
 }
 
 bool Input::key_pressed(SDL_Scancode key) const {
-	return valid_key(key) && keys_pressed.test(static_cast<usize>(key));
+	return !capture_keyboard && valid_key(key) && keys_pressed.test(static_cast<usize>(key));
 }
 
 bool Input::key_released(SDL_Scancode key) const {
-	return valid_key(key) && keys_released.test(static_cast<usize>(key));
+	return !capture_keyboard && valid_key(key) && keys_released.test(static_cast<usize>(key));
 }
 
 bool Input::mouse_button_down(u8 button) const {
-	return (mouse_buttons_down & mouse_button_mask(button)) != 0;
+	return !capture_mouse && (mouse_buttons_down & mouse_button_mask(button)) != 0;
 }
 
 bool Input::mouse_button_pressed(u8 button) const {
-	return (mouse_buttons_pressed & mouse_button_mask(button)) != 0;
+	return !capture_mouse && (mouse_buttons_pressed & mouse_button_mask(button)) != 0;
 }
 
 bool Input::mouse_button_released(u8 button) const {
-	return (mouse_buttons_released & mouse_button_mask(button)) != 0;
+	return !capture_mouse && (mouse_buttons_released & mouse_button_mask(button)) != 0;
 }
 
 bool Input::valid_key(SDL_Scancode key) {

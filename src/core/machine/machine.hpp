@@ -1,5 +1,6 @@
 #pragma once
 
+#include "common/connection_state.hpp"
 #include "common/constants.hpp"
 #include "content/machines.hpp"
 #include "core/target/target.hpp"
@@ -32,7 +33,15 @@ struct MachineSimulationData {
 };
 
 struct MachineRenderData {
+	vec2i grid_position{0, 0};
+
 	MachineType machine_type{MachineType::MINER};
-	vec2i position{0, 0};
 	bool flipped{false};
 };
+
+struct MachineConnectionData {
+	std::array<ConnectionState, MACHINE_MIC> input_connection_states;
+	std::array<ConnectionState, MACHINE_MOC> output_connection_states;
+};
+
+void machine_draw(MachineRenderData& render_data, MachineConnectionData& connection_data);

@@ -3,6 +3,7 @@
 #include "types.hpp"
 
 #include <cassert>
+#include <ranges>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -102,6 +103,16 @@ class Pool {
 	const T& get(ID id) const {
 		assert(contains(id));
 		return data<T>()[m_slots[id]];
+	}
+
+	template <typename... Us>
+	auto each() {
+		return std::views::zip(data<Us>()...);
+	}
+
+	template <typename... Us>
+	auto each() const {
+		return std::views::zip(data<Us>()...);
 	}
 
 	template <typename T>

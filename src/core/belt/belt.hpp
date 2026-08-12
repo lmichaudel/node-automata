@@ -6,8 +6,6 @@
 
 #include <vector>
 
-struct BeltRenderData {};
-
 struct BeltSimulationData {
 	explicit BeltSimulationData(u32 tile_count);
 
@@ -69,3 +67,11 @@ struct BeltSimulationData {
 	// which avoids repeatedly scanning compressed items.
 	u32 first_gap_offset_ = 0;
 };
+
+struct BeltRenderData {
+	std::vector<vec2i> waypoints{};
+};
+
+struct BeltConnectionData {};
+
+void belt_draw(BeltRenderData& render_data, BeltConnectionData& connection_data);

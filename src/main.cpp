@@ -52,6 +52,9 @@ int main(int, char**) {
 			return EXIT_FAILURE;
 		}
 
+		Game game{};
+		g_game = &game;
+
 		platform.start(tick, update, draw);
 	}
 

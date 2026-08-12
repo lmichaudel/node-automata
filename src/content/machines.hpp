@@ -20,12 +20,12 @@ struct MachineTypeData {
 	u8 output_count;
 };
 
-inline const std::array<MachineTypeData, static_cast<usize>(MachineType::COUNT)> MACHINE_TYPES = {{
+constexpr std::array<MachineTypeData, static_cast<usize>(MachineType::COUNT)> MACHINE_TYPES = {{
 	{"Miner", {5, 5}, {0.12f, 0.53f, 0.90f, 1.0f}, 1, 0, 1},
 	{"Smelter", {5, 3}, {0.90f, 0.22f, 0.21f, 1.0f}, 2, 1, 1},
 	{"Assembler", {10, 5}, {0.26f, 0.63f, 0.28f, 1.0f}, 0, 2, 1},
 }};
 
-inline const MachineTypeData& get_machine_type_data(MachineType machine_type) {
+constexpr const MachineTypeData& get_machine_type_data(MachineType machine_type) {
 	return MACHINE_TYPES[static_cast<usize>(machine_type)];
 }
