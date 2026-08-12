@@ -75,7 +75,7 @@ float grid_coverage(float2 world_position, float spacing, float world_width,
 }
 
 float4 main(FragmentInput input) : SV_Target0 {
-	// 0: textured sprite, 1: circle, 2: rounded rectangle, 3: MSDF glyph, 4: grid.
+	// 0: texture, 1: circle, 2: rounded rectangle, 3: MSDF, 4: grid, 5: quarter ring.
 	if (input.kind == 0) {
 		return sprite_texture.Sample(sprite_sampler, input.uv) * input.color;
 	}
@@ -108,6 +108,12 @@ float4 main(FragmentInput input) : SV_Target0 {
 	float signed_distance;
 	if (input.kind == 1) {
 		signed_distance = length(input.local_position) - min(input.half_size.x, input.half_size.y);
+	} else if (input.kind == 5) {
+		const float turn = input.corner_radii.y > 0.5 ? 1.0 : -1.0;
+		const float2 arc_center = float2(-input.half_size.x, turn * input.half_size.y);
+		const float radius = min(input.half_size.x, input.half_size.y);
+		signed_distance = abs(length(input.local_position - arc_center) - radius) -
+			input.corner_radii.x * 0.5;
 	} else {
 		signed_distance = rounded_box_distance(
 			input.local_position,
@@ -116,7 +122,7 @@ float4 main(FragmentInput input) : SV_Target0 {
 		);
 	}
 
-	const bool antialiased = input.kind == 1 ||
+	const bool antialiased = input.kind == 1 || input.kind == 5 ||
 		edge_is_antialiased(input.local_position, input.half_size, input.antialiased_edges);
 	return float4(input.color.rgb, input.color.a * coverage(signed_distance, antialiased));
 }

@@ -432,6 +432,19 @@ void Renderer::draw_circle(vec2 origin, f32 radius, vec4 color, u8 layer) {
 	}
 }
 
+void Renderer::draw_quarter_ring(vec2 origin, f32 size, f32 thickness, bool clockwise, vec4 color,
+								 f32 rotation, u8 layer) {
+	if (size > 0.0F && thickness > 0.0F) {
+		draw(Sprite{.origin = origin,
+					.size = vec2{size},
+					.color = color,
+					.rotation = rotation,
+					.corner_radii = vec4{thickness, clockwise ? 1.0F : 0.0F, 0.0F, 0.0F},
+					.kind = SpriteKind::QuarterRing,
+					.layer = layer});
+	}
+}
+
 void Renderer::draw_grid(f32 cell_size, f32 line_width, f32 minimum_pixel_width,
 						 u32 supergrid_interval, vec4 line_color, vec4 supergrid_color, u8 layer) {
 	if (cell_size <= 0.0F || line_width <= 0.0F || minimum_pixel_width <= 0.0F ||

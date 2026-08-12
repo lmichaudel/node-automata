@@ -9,7 +9,8 @@ enum class SpriteKind : u8 {
 	Circle,
 	RoundedRectangle,
 	Msdf,
-	Grid
+	Grid,
+	QuarterRing
 };
 
 enum class AntialiasEdge : u8 {

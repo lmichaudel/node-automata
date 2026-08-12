@@ -134,17 +134,25 @@ void machine_draw(MachineRenderData& rd, MachineConnectionData& cd) {
 	const vec2 world_position = world_min + world_size * 0.5F;
 
 	constexpr f32 ROUNDING = 4.0F;
-	constexpr f32 OUTLINE_THICKNESS = 1.5F;
+	constexpr f32 OUTLINE_THICKNESS = 3.0F;
 	constexpr f32 HALF_OUTLINE = OUTLINE_THICKNESS * 0.5F;
 	constexpr f32 FONT_SIZE = 14.0F;
 	constexpr f32 TEXT_PADDING = 4.0F;
-	constexpr f32 STUB_LENGTH = 10.0F;
-	constexpr f32 STUB_WIDTH = 6.0F;
-	constexpr vec4 BODY_COLOR{0.98F, 0.97F, 0.93F, 1.0F};
-	constexpr u8 ACCENT_LAYER = 3;
-	constexpr u8 BODY_LAYER = 4;
-	constexpr u8 STUB_LAYER = 5;
-	constexpr u8 TEXT_LAYER = 6;
+	constexpr f32 PIN_SIZE = BELT_WIDTH;
+	constexpr vec4 BODY_COLOR = rgba(247, 242, 232);
+	constexpr vec2 SHADOW_OFFSET{2.0F, 3.0F};
+	constexpr f32 SHADOW_SPREAD = 1.0F;
+	constexpr vec4 SHADOW_COLOR = rgba(184, 170, 153);
+	constexpr u8 SHADOW_LAYER = 4;
+	constexpr u8 ACCENT_LAYER = 5;
+	constexpr u8 BODY_LAYER = 6;
+	constexpr u8 PIN_LAYER = 7;
+	constexpr u8 TEXT_LAYER = 8;
+
+	// The expanded, offset silhouette gives the whole chassis one coherent shadow.
+	g_renderer->draw_rounded_rect(world_min + SHADOW_OFFSET - vec2{SHADOW_SPREAD},
+								  world_size + vec2{SHADOW_SPREAD * 2.0F}, ROUNDING + SHADOW_SPREAD,
+								  SHADOW_COLOR, 0.0F, SHADOW_LAYER);
 
 	// Accent-colored background and header.
 	g_renderer->draw_rounded_rect(world_min, world_size, ROUNDING, md.accent_color, 0.0F,
@@ -165,22 +173,23 @@ void machine_draw(MachineRenderData& rd, MachineConnectionData& cd) {
 								  vec4{0.0F, 0.0F, inner_rounding, inner_rounding}, BODY_COLOR,
 								  0.0F, BODY_LAYER, BODY_EDGES);
 
-	// Port stubs straddle the machine boundary, running from the cream interior to the outside.
-	const auto draw_stubs = [&](u8 count, bool left) {
-		const f32 first_y = world_position.y - static_cast<f32>(count - 1) * CELL_SIZE * 0.5F;
-		const f32 x = left ? world_min.x : world_min.x + world_size.x;
+	// Pins use the same fixed shadow direction as the chassis.
+	const auto draw_stubs = [&](u8 count, bool left, vec4 color) {
+		const f32 first_y =
+			world_position.y - static_cast<f32>(count - 1) * CELL_SIZE * 0.5f - PIN_SIZE;
+		const f32 x = left ? (world_min.x - PIN_SIZE) : (world_min.x + world_size.x - PIN_SIZE);
 		for (u8 i = 0; i < count; ++i) {
 			const vec2 position{x, first_y + static_cast<f32>(i) * CELL_SIZE};
-			const vec2 stub_size{STUB_LENGTH, STUB_WIDTH};
-			g_renderer->draw_rounded_rect(position - stub_size * 0.5F, stub_size, 0.0F,
-									  md.accent_color, 0.0F, STUB_LAYER);
+			g_renderer->draw_circle(position + SHADOW_OFFSET, PIN_SIZE, SHADOW_COLOR, SHADOW_LAYER);
+			g_renderer->draw_circle(position, PIN_SIZE, color, PIN_LAYER);
 		}
 	};
 
-	draw_stubs(md.input_count, !rd.flipped);
-	draw_stubs(md.output_count, rd.flipped);
+	draw_stubs(md.input_count, !rd.flipped, rgba(76, 175, 80));
+	draw_stubs(md.output_count, rd.flipped, rgba(255, 167, 38));
 
 	const f32 text_y = world_min.y + (CELL_SIZE - FONT_SIZE) * 0.5F;
 	g_renderer->draw_text(g_assets->font<FontAsset::Inconsolata>(), md.name,
-						  vec2{world_min.x + TEXT_PADDING, text_y}, FONT_SIZE, vec4{1.0F}, TEXT_LAYER);
+						  vec2{world_min.x + TEXT_PADDING, text_y}, FONT_SIZE, vec4{1.0F},
+						  TEXT_LAYER);
 }

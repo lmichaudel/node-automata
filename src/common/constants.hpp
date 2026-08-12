@@ -25,3 +25,5 @@ constexpr f32 cell(i32 c) {
 constexpr vec2 cell(vec2i c) {
 	return vec2{CELL_SIZE} * (vec2)c;
 }
+
+constexpr f32 BELT_WIDTH = CELL_SIZE / 5.0f;

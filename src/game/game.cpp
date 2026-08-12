@@ -12,14 +12,23 @@
 #include <cmath>
 
 Game::Game() {
-	create_machine(MachineType::SMELTER, {100, 100});
+	constexpr vec2i SMELTER_POSITION{100, 100};
+	create_machine(MachineType::SMELTER, SMELTER_POSITION);
 
 	create_junction({150, 100});
 
+	const auto& smelter = get_machine_type_data(MachineType::SMELTER);
+	const vec2i smelter_output =
+		SMELTER_POSITION + vec2i{smelter.size.x * static_cast<i32>(CELL_SIZE),
+								 smelter.size.y * static_cast<i32>(CELL_SIZE) / 2};
+
 	const ID belt = create_belt();
 	belts.get<BeltRenderData>(belt).waypoints = {
-		{110, 210}, {310, 210}, {310, 310}, {450, 310}, {450, 190},
-		{570, 190}, {570, 390}, {750, 390}, {750, 270}, {890, 270},
+		smelter_output, {310, smelter_output.y},
+		{310, 310},		{450, 310},
+		{450, 190},		{570, 190},
+		{570, 390},		{750, 390},
+		{750, 270},		{890, 270},
 	};
 }
 
@@ -90,8 +99,8 @@ void Game::draw() {
 	constexpr f32 GRID_LINE_WIDTH = 0.6f;
 	constexpr f32 GRID_MIN_PIXEL_WIDTH = 1.f;
 	constexpr u32 SUPERGRID_INTERVAL = 5;
-	constexpr vec4 GRID_COLOR{0.30F, 0.34F, 0.43F, 0.16F};
-	constexpr vec4 SUPERGRID_COLOR{0.42F, 0.47F, 0.58F, 0.28F};
+	constexpr vec4 GRID_COLOR = rgba(207, 197, 183, 150);
+	constexpr vec4 SUPERGRID_COLOR = rgba(184, 170, 153, 190);
 	g_renderer->draw_grid(CELL_SIZE, GRID_LINE_WIDTH, GRID_MIN_PIXEL_WIDTH, SUPERGRID_INTERVAL,
 						  GRID_COLOR, SUPERGRID_COLOR);
 
