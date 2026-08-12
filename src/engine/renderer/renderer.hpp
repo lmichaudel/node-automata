@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common/types.hpp"
+#include "common/constants.hpp"
 #include "engine/debug/debugger.hpp"
 #include "engine/renderer/buffer/buffer.hpp"
 #include "engine/renderer/program/program.hpp"
@@ -18,7 +18,7 @@ class Font;
 
 class Renderer {
   public:
-	static constexpr usize LAYER_COUNT = 12;
+	static constexpr usize LAYER_COUNT = render_layer::COUNT;
 
 	Renderer() = default;
 	~Renderer();
@@ -29,24 +29,34 @@ class Renderer {
 	void release();
 	// Sets the world-space point shown at the top-left and the number of pixels per world unit.
 	void set_view(vec2 position, f32 zoom = 1.0F);
-	void begin_frame(vec4 clear_color = rgba(232, 225, 213));
+	void begin_frame(vec4 clear_color = rgba(31, 31, 36));
 	void draw(const Sprite& sprite);
 	void draw_texture(Texture* texture, vec2 origin, vec2 size, vec4 color = vec4{1.0F},
 					  vec4 uv_rect = vec4{0.0F, 0.0F, 1.0F, 1.0F}, f32 rotation = 0.0F,
 					  u8 layer = 0);
-	void draw_circle(vec2 origin, f32 radius, vec4 color, u8 layer = 0);
+	void draw_circle(vec2 origin, f32 radius, vec4 color, u8 layer = 0, f32 blur_radius = 0.0F);
+	// Draws a line with butt caps. Blur and antialiasing only affect its two long edges.
+	void draw_line(vec2 start, vec2 end, f32 width, vec4 color, u8 layer = 0,
+				   f32 blur_radius = 0.0F);
+	// Draws a perfect quarter-circle centered at `center`, from the left tangent to
+	// the bottom (clockwise) or top (counter-clockwise) tangent, before rotation.
+	// Its butt caps are neither blurred nor antialiased.
+	void draw_rounded_line_90(vec2 center, f32 radius, f32 width, bool clockwise, vec4 color,
+						  f32 rotation = 0.0F, u8 layer = 0, f32 blur_radius = 0.0F);
 	// Draws a 90-degree ring from the left edge to either the bottom edge
 	// (clockwise) or top edge (counter-clockwise), before applying rotation.
 	void draw_quarter_ring(vec2 origin, f32 size, f32 thickness, bool clockwise, vec4 color,
-						   f32 rotation = 0.0F, u8 layer = 0);
+						   f32 rotation = 0.0F, u8 layer = 0, f32 blur_radius = 0.0F);
 	void draw_grid(f32 cell_size, f32 line_width, f32 minimum_pixel_width, u32 supergrid_interval,
 				   vec4 line_color, vec4 supergrid_color, u8 layer = 0);
 	void draw_rounded_rect(vec2 origin, vec2 size, f32 radius, vec4 color, f32 rotation = 0.0F,
-						   u8 layer = 0, AntialiasEdge antialiased_edges = AntialiasEdge::All);
+						   u8 layer = 0, AntialiasEdge antialiased_edges = AntialiasEdge::All,
+						   f32 blur_radius = 0.0F);
 	// Corner radii are ordered top-left, top-right, bottom-right, bottom-left.
 	void draw_rounded_rect(vec2 origin, vec2 size, vec4 corner_radii, vec4 color,
 						   f32 rotation = 0.0F, u8 layer = 0,
-						   AntialiasEdge antialiased_edges = AntialiasEdge::All);
+						   AntialiasEdge antialiased_edges = AntialiasEdge::All,
+						   f32 blur_radius = 0.0F);
 	void draw_text(const Font& font, std::string_view text, vec2 top_left, f32 font_size,
 				   vec4 color = vec4{1.0F}, u8 layer = 0);
 	bool end_frame();

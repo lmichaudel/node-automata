@@ -10,7 +10,9 @@ enum class SpriteKind : u8 {
 	RoundedRectangle,
 	Msdf,
 	Grid,
-	QuarterRing
+	QuarterRing,
+	Line,
+	RoundedLine90
 };
 
 enum class AntialiasEdge : u8 {
@@ -37,6 +39,7 @@ struct Sprite {
 	vec4 corner_radii{0.0F};
 	AntialiasEdge antialiased_edges{AntialiasEdge::All};
 	f32 msdf_range{4.0F};
+	f32 blur_radius{0.0F};
 	SpriteKind kind{SpriteKind::Texture};
 	u8 layer{0};
 };

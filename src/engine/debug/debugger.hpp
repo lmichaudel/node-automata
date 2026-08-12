@@ -1,5 +1,7 @@
 #pragma once
 
+#include "common/types.hpp"
+
 #include <SDL3/SDL_gpu.h>
 
 union SDL_Event;
@@ -21,10 +23,16 @@ class Debugger {
 
 	bool wants_mouse() const;
 	bool wants_keyboard() const;
+	vec4 clear_color() const;
+	vec4 grid_color() const;
+	vec4 supergrid_color() const;
 
   private:
 	bool initialized{false};
 	bool visible{true};
+	vec4 clear_color_value{rgba(52, 52, 55)};
+	vec4 grid_color_value{rgba(68, 68, 71, 210)};
+	vec4 supergrid_color_value{rgba(122, 122, 125, 225)};
 
 	void draw_metrics();
 };

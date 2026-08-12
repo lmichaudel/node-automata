@@ -99,15 +99,17 @@ void Game::draw() {
 	constexpr f32 GRID_LINE_WIDTH = 0.6f;
 	constexpr f32 GRID_MIN_PIXEL_WIDTH = 1.f;
 	constexpr u32 SUPERGRID_INTERVAL = 5;
-	constexpr vec4 GRID_COLOR = rgba(207, 197, 183, 150);
-	constexpr vec4 SUPERGRID_COLOR = rgba(184, 170, 153, 190);
+	// Minor and major world grid lines behind the factory.
 	g_renderer->draw_grid(CELL_SIZE, GRID_LINE_WIDTH, GRID_MIN_PIXEL_WIDTH, SUPERGRID_INTERVAL,
-						  GRID_COLOR, SUPERGRID_COLOR);
+						  g_renderer->debugger().grid_color(),
+						  g_renderer->debugger().supergrid_color(), render_layer::BACKGROUND);
 
-	g_renderer->draw_circle(vec2{360}, 40, vec4{1.0f});
+	// Temporary renderer test circle.
+	g_renderer->draw_circle(vec2{360}, 40, vec4{1.0f}, render_layer::DEBUG);
+	// Temporary renderer test label.
 	g_renderer->draw_text(g_assets->font<FontAsset::Inconsolata>(),
 						  "Node Automata\nMSDF text rendering", vec2{24.0F}, 30.0F,
-						  vec4{0.9F, 0.95F, 1.0F, 1.0F}, 11);
+						  vec4{0.9F, 0.95F, 1.0F, 1.0F}, render_layer::DEBUG);
 
 	for (auto [rd, cd] : belts.each<BeltRenderData, BeltConnectionData>()) {
 		belt_draw(rd, cd);

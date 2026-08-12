@@ -18,6 +18,24 @@ constexpr u32 BELT_MOVE_PER_TICK =
 
 constexpr u32 CELL_SIZE = 20;
 
+// Global back-to-front render order. Keep all world rendering on these named layers.
+namespace render_layer {
+	constexpr u8 BACKGROUND = 0;
+	constexpr u8 AMBIENT_SHADOW = 1;
+	constexpr u8 CONTACT_SHADOW = 2;
+
+	constexpr u8 BELT_TRACK = 3;
+	constexpr u8 BELT = 4;
+	constexpr u8 BELT_DETAIL = 5;
+
+	constexpr u8 MACHINE_CHASSIS = 6;
+	constexpr u8 MACHINE_BODY = 7;
+	constexpr u8 MACHINE_PIN = 8;
+	constexpr u8 WORLD_TEXT = 9;
+	constexpr u8 DEBUG = 11;
+	constexpr usize COUNT = 12;
+} // namespace render_layer
+
 constexpr f32 cell(i32 c) {
 	return CELL_SIZE * c;
 }
@@ -26,4 +44,14 @@ constexpr vec2 cell(vec2i c) {
 	return vec2{CELL_SIZE} * (vec2)c;
 }
 
-constexpr f32 BELT_WIDTH = CELL_SIZE / 5.0f;
+constexpr f32 BELT_WIDTH = CELL_SIZE / 4.0f;
+
+constexpr vec2 SHADOW_OFFSET{3.0F, 5.0F};
+constexpr f32 SHADOW_SPREAD = 2.0F;
+constexpr f32 SHADOW_BLUR_RADIUS = 4.5F;
+constexpr vec4 SHADOW_COLOR = rgba(0, 0, 0, 72);
+
+constexpr vec2 CONTACT_SHADOW_OFFSET{1.0F, 2.0F};
+constexpr f32 CONTACT_SHADOW_SPREAD = 0.75F;
+constexpr f32 CONTACT_SHADOW_BLUR_RADIUS = 1.0F;
+constexpr vec4 CONTACT_SHADOW_COLOR = rgba(0, 0, 0, 145);

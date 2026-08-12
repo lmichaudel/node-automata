@@ -230,69 +230,56 @@ void belt_draw(BeltRenderData& rd, BeltConnectionData& cd) {
 		return;
 
 	constexpr f32 TURN_RADIUS = CELL_SIZE * 0.5F;
-	constexpr vec4 BELT_COLOR = rgba(247, 242, 232);
-	constexpr vec2 SHADOW_OFFSET{2.0F, 3.0F};
-	constexpr f32 SHADOW_SPREAD = 1.0F;
-	constexpr vec4 SHADOW_COLOR = rgba(184, 170, 153);
-	constexpr u8 SHADOW_LAYER = 1;
-	constexpr u8 BELT_LAYER = 2;
+	constexpr vec4 BELT_COLOR = rgb(247, 242, 232);
+
+	const auto direction_between = [&](usize from, usize to) {
+		const vec2 delta = vec2{rd.waypoints[to] - rd.waypoints[from]};
+		const f32 segment_length = std::abs(delta.x) + std::abs(delta.y);
+		assert(segment_length > 0.0F);
+		assert((delta.x == 0.0F) != (delta.y == 0.0F));
+		return delta / segment_length;
+	};
 	const auto is_corner = [&](usize waypoint) {
 		if (waypoint == 0 || waypoint + 1 >= rd.waypoints.size())
 			return false;
 
-		const vec2i incoming = rd.waypoints[waypoint] - rd.waypoints[waypoint - 1];
-		const vec2i outgoing = rd.waypoints[waypoint + 1] - rd.waypoints[waypoint];
-		return (incoming.x == 0) != (outgoing.x == 0);
-	};
-	const auto direction_between = [&](usize from, usize to) {
-		const vec2 delta = vec2{rd.waypoints[to] - rd.waypoints[from]};
-		return delta / (std::abs(delta.x) + std::abs(delta.y));
+		const vec2 incoming = direction_between(waypoint - 1, waypoint);
+		const vec2 outgoing = direction_between(waypoint, waypoint + 1);
+		return dot(incoming, outgoing) == 0.0F;
 	};
 
-	for (usize i = 1; i < rd.waypoints.size(); ++i) {
-		const vec2i from = rd.waypoints[i - 1];
-		const vec2i to = rd.waypoints[i];
-		const vec2i delta = to - from;
-
-		assert((delta.x == 0) != (delta.y == 0));
-
-		const f32 segment_length =
-			std::abs(static_cast<f32>(delta.x)) + std::abs(static_cast<f32>(delta.y));
-		const vec2 direction = vec2{delta} / segment_length;
-		const f32 start_trim = is_corner(i - 1) ? TURN_RADIUS : 0.0F;
-		const f32 end_trim = is_corner(i) ? TURN_RADIUS : 0.0F;
-		const f32 straight_length = segment_length - start_trim - end_trim;
-		assert(straight_length >= 0.0F);
-		const vec2 size =
-			delta.x == 0 ? vec2{BELT_WIDTH, straight_length} : vec2{straight_length, BELT_WIDTH};
-		const vec2 center = vec2{from} + direction * (start_trim + straight_length * 0.5F);
-
-		if (straight_length > 0.0F) {
-			const vec2 shadow_size = delta.x == 0
-										 ? vec2{BELT_WIDTH + SHADOW_SPREAD, straight_length}
-										 : vec2{straight_length, BELT_WIDTH + SHADOW_SPREAD};
-			g_renderer->draw_rounded_rect(center + SHADOW_OFFSET - shadow_size * 0.5F, shadow_size,
-										  0.0F, SHADOW_COLOR, 0.0F, SHADOW_LAYER);
-			g_renderer->draw_rounded_rect(center - size * 0.5F, size, 0.0F, BELT_COLOR, 0.0F,
-										  BELT_LAYER);
+	const auto draw_path = [&](vec2 offset, f32 width, vec4 color, u8 layer, f32 blur_radius) {
+		// Butt-capped straights stop exactly at each turn's tangent points.
+		for (usize i = 1; i < rd.waypoints.size(); ++i) {
+			const vec2 direction = direction_between(i - 1, i);
+			const vec2 start = vec2{rd.waypoints[i - 1]} +
+				(is_corner(i - 1) ? direction * TURN_RADIUS : vec2{0.0F});
+			const vec2 end = vec2{rd.waypoints[i]} -
+				(is_corner(i) ? direction * TURN_RADIUS : vec2{0.0F});
+			assert(dot(end - start, direction) >= 0.0F);
+			g_renderer->draw_line(start + offset, end + offset, width, color, layer, blur_radius);
 		}
-	}
 
-	// Each bend is an analytic quarter ring contained by the one-cell square
-	// centered on its waypoint. Its ends are tangent to the trimmed straights.
-	for (usize i = 1; i + 1 < rd.waypoints.size(); ++i) {
-		if (!is_corner(i))
-			continue;
+		// Analytic quarter-circles join the trimmed straights without overlap or caps.
+		for (usize i = 1; i + 1 < rd.waypoints.size(); ++i) {
+			if (!is_corner(i))
+				continue;
 
-		const vec2 incoming = direction_between(i - 1, i);
-		const vec2 outgoing = direction_between(i, i + 1);
-		const f32 cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
-		const f32 rotation = std::atan2(incoming.y, incoming.x);
-		const vec2 origin = vec2{rd.waypoints[i]} - vec2{TURN_RADIUS};
+			const vec2 incoming = direction_between(i - 1, i);
+			const vec2 outgoing = direction_between(i, i + 1);
+			const f32 cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
+			const vec2 center = vec2{rd.waypoints[i]} - incoming * TURN_RADIUS +
+				outgoing * TURN_RADIUS + offset;
+			const f32 rotation = std::atan2(outgoing.y, outgoing.x);
+			g_renderer->draw_rounded_line_90(center, TURN_RADIUS, width, cross < 0.0F, color,
+										 rotation, layer, blur_radius);
+		}
+	};
 
-		g_renderer->draw_quarter_ring(origin + SHADOW_OFFSET, CELL_SIZE, BELT_WIDTH + SHADOW_SPREAD,
-									  cross > 0.0F, SHADOW_COLOR, rotation, SHADOW_LAYER);
-		g_renderer->draw_quarter_ring(origin, CELL_SIZE, BELT_WIDTH, cross > 0.0F, BELT_COLOR,
-									  rotation, BELT_LAYER);
-	}
+	// Soft cast shadow, tight contact shadow, then the belt itself.
+	draw_path(SHADOW_OFFSET, BELT_WIDTH + SHADOW_SPREAD * 2.0F, SHADOW_COLOR,
+			  render_layer::AMBIENT_SHADOW, SHADOW_BLUR_RADIUS);
+	draw_path(CONTACT_SHADOW_OFFSET, BELT_WIDTH + CONTACT_SHADOW_SPREAD * 2.0F,
+			  CONTACT_SHADOW_COLOR, render_layer::CONTACT_SHADOW, CONTACT_SHADOW_BLUR_RADIUS);
+	draw_path(vec2{0.0F}, BELT_WIDTH, BELT_COLOR, render_layer::BELT, 0.0F);
 }

@@ -9,7 +9,7 @@ struct FragmentInput {
 	float4 color : TEXCOORD3;
 	nointerpolation float4 corner_radii : TEXCOORD4;
 	nointerpolation uint kind : TEXCOORD5;
-	nointerpolation float msdf_range : TEXCOORD6;
+	nointerpolation float effect_range : TEXCOORD6;
 	nointerpolation uint antialiased_edges : TEXCOORD7;
 	nointerpolation float4 auxiliary : TEXCOORD8;
 };
@@ -29,7 +29,12 @@ float msdf_screen_range(float2 uv, float pixel_range) {
 	return max(0.5 * dot(unit_range, screen_texture_size), 1.0);
 }
 
-float coverage(float signed_distance, bool antialiased) {
+float coverage(float signed_distance, bool antialiased, float blur_radius) {
+	if (blur_radius > 0.0) {
+		const float antialias_width = max(fwidth(signed_distance), 0.0001);
+		const float feather = max(blur_radius, antialias_width);
+		return 1.0 - smoothstep(-feather, feather, signed_distance);
+	}
 	if (!antialiased) {
 		return signed_distance <= 0.0 ? 1.0 : 0.0;
 	}
@@ -75,7 +80,8 @@ float grid_coverage(float2 world_position, float spacing, float world_width,
 }
 
 float4 main(FragmentInput input) : SV_Target0 {
-	// 0: texture, 1: circle, 2: rounded rectangle, 3: MSDF, 4: grid, 5: quarter ring.
+	// 0: texture, 1: circle, 2: rounded rectangle, 3: MSDF, 4: grid,
+	// 5: quarter ring, 6: line, 7: perfect 90-degree rounded line.
 	if (input.kind == 0) {
 		return sprite_texture.Sample(sprite_sampler, input.uv) * input.color;
 	}
@@ -83,7 +89,7 @@ float4 main(FragmentInput input) : SV_Target0 {
 		const float3 sample_value = sprite_texture.Sample(sprite_sampler, input.uv).rgb;
 		const float signed_distance = median3(sample_value) - 0.5;
 		const float opacity = saturate(
-			signed_distance * msdf_screen_range(input.uv, input.msdf_range) + 0.5
+			signed_distance * msdf_screen_range(input.uv, input.effect_range) + 0.5
 		);
 		return float4(input.color.rgb, input.color.a * opacity);
 	}
@@ -106,14 +112,32 @@ float4 main(FragmentInput input) : SV_Target0 {
 	}
 
 	float signed_distance;
+	float cap_coverage = 1.0;
 	if (input.kind == 1) {
 		signed_distance = length(input.local_position) - min(input.half_size.x, input.half_size.y);
 	} else if (input.kind == 5) {
 		const float turn = input.corner_radii.y > 0.5 ? 1.0 : -1.0;
 		const float2 arc_center = float2(-input.half_size.x, turn * input.half_size.y);
 		const float radius = min(input.half_size.x, input.half_size.y);
-		signed_distance = abs(length(input.local_position - arc_center) - radius) -
+		const float2 arc_position = input.local_position - arc_center;
+		signed_distance = abs(length(arc_position) - radius) -
 			input.corner_radii.x * 0.5;
+		// Blur and antialias only the curved radial edges. The two tangent caps use
+		// a binary sector mask so they remain solid where straight sections join.
+		cap_coverage = arc_position.x >= 0.0 && turn * arc_position.y <= 0.0 ? 1.0 : 0.0;
+	} else if (input.kind == 6) {
+		// Only the long edges participate in the distance field. The binary mask keeps
+		// both butt caps completely free of blur and antialiasing.
+		signed_distance = abs(input.local_position.y) - input.half_size.y;
+		cap_coverage = abs(input.local_position.x) <= input.half_size.x ? 1.0 : 0.0;
+	} else if (input.kind == 7) {
+		const float turn = input.corner_radii.z > 0.5 ? 1.0 : -1.0;
+		signed_distance = abs(length(input.local_position) - input.corner_radii.x) -
+			input.corner_radii.y * 0.5;
+		// Canonical arc runs from the left tangent to the bottom/top tangent. This
+		// binary quadrant mask makes both tangent caps perfectly hard.
+		cap_coverage = input.local_position.x <= 0.0 &&
+			turn * input.local_position.y >= 0.0 ? 1.0 : 0.0;
 	} else {
 		signed_distance = rounded_box_distance(
 			input.local_position,
@@ -122,7 +146,9 @@ float4 main(FragmentInput input) : SV_Target0 {
 		);
 	}
 
-	const bool antialiased = input.kind == 1 || input.kind == 5 ||
+	const bool antialiased = input.kind == 1 || input.kind == 5 || input.kind == 6 ||
+		input.kind == 7 ||
 		edge_is_antialiased(input.local_position, input.half_size, input.antialiased_edges);
-	return float4(input.color.rgb, input.color.a * coverage(signed_distance, antialiased));
+	return float4(input.color.rgb,
+		input.color.a * coverage(signed_distance, antialiased, input.effect_range) * cap_coverage);
 }

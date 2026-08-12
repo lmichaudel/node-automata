@@ -38,6 +38,7 @@ bool JunctionSimulationData::try_transfer(Item item, u8 buffer_id) {
 void junction_draw(JunctionRenderData& rd, JunctionConnectionData& cd) {
 	(void)cd;
 
+	// White body of the belt junction.
 	g_renderer->draw_rounded_rect((vec2)rd.grid_position - vec2{9.5f}, vec2{20.0f}, 2.0f,
-								  vec4{1.0f});
+								  vec4{1.0f}, 0.0F, render_layer::BELT);
 }

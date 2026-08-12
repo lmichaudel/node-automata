@@ -196,8 +196,10 @@ void Renderer::draw(const Sprite& sprite) {
 		.size = sprite.size,
 		.uv_rect = sprite.uv_rect,
 		.color = sprite.color,
-		.parameters = vec4{sprite.rotation, static_cast<f32>(sprite.antialiased_edges),
-						   static_cast<f32>(sprite.kind), sprite.msdf_range},
+		.parameters =
+			vec4{sprite.rotation, static_cast<f32>(sprite.antialiased_edges),
+				 static_cast<f32>(sprite.kind),
+				 sprite.kind == SpriteKind::Msdf ? sprite.msdf_range : sprite.blur_radius},
 		.corner_radii = max(sprite.corner_radii, vec4{0.0F}),
 	});
 
@@ -422,24 +424,56 @@ void Renderer::draw_texture(Texture* texture, vec2 origin, vec2 size, vec4 color
 				.layer = layer});
 }
 
-void Renderer::draw_circle(vec2 origin, f32 radius, vec4 color, u8 layer) {
+void Renderer::draw_circle(vec2 origin, f32 radius, vec4 color, u8 layer, f32 blur_radius) {
 	if (radius > 0.0F) {
 		draw(Sprite{.origin = origin,
 					.size = vec2{radius * 2.0F},
 					.color = color,
+					.blur_radius = max(blur_radius, 0.0F),
 					.kind = SpriteKind::Circle,
 					.layer = layer});
 	}
 }
 
+void Renderer::draw_line(vec2 start, vec2 end, f32 width, vec4 color, u8 layer,
+					 f32 blur_radius) {
+	const vec2 delta = end - start;
+	const f32 line_length = length(delta);
+	if (line_length > 0.0F && width > 0.0F) {
+		const vec2 size{line_length, width};
+		draw(Sprite{.origin = (start + end - size) * 0.5F,
+					.size = size,
+					.color = color,
+					.rotation = atan(delta.y, delta.x),
+					.blur_radius = max(blur_radius, 0.0F),
+					.kind = SpriteKind::Line,
+					.layer = layer});
+	}
+}
+
+void Renderer::draw_rounded_line_90(vec2 center, f32 radius, f32 width, bool clockwise, vec4 color,
+								f32 rotation, u8 layer, f32 blur_radius) {
+	if (radius > 0.0F && width > 0.0F) {
+		draw(Sprite{.origin = center - vec2{radius},
+					.size = vec2{radius * 2.0F},
+					.color = color,
+					.rotation = rotation,
+					.corner_radii = vec4{radius, width, clockwise ? 1.0F : 0.0F, 0.0F},
+					.blur_radius = max(blur_radius, 0.0F),
+					.kind = SpriteKind::RoundedLine90,
+					.layer = layer});
+	}
+}
+
 void Renderer::draw_quarter_ring(vec2 origin, f32 size, f32 thickness, bool clockwise, vec4 color,
-								 f32 rotation, u8 layer) {
+								 f32 rotation, u8 layer, f32 blur_radius) {
 	if (size > 0.0F && thickness > 0.0F) {
 		draw(Sprite{.origin = origin,
 					.size = vec2{size},
 					.color = color,
 					.rotation = rotation,
 					.corner_radii = vec4{thickness, clockwise ? 1.0F : 0.0F, 0.0F, 0.0F},
+					.blur_radius = max(blur_radius, 0.0F),
 					.kind = SpriteKind::QuarterRing,
 					.layer = layer});
 	}
@@ -464,18 +498,21 @@ void Renderer::draw_grid(f32 cell_size, f32 line_width, f32 minimum_pixel_width,
 }
 
 void Renderer::draw_rounded_rect(vec2 origin, vec2 size, f32 radius, vec4 color, f32 rotation,
-								 u8 layer, AntialiasEdge antialiased_edges) {
-	draw_rounded_rect(origin, size, vec4{radius}, color, rotation, layer, antialiased_edges);
+								 u8 layer, AntialiasEdge antialiased_edges, f32 blur_radius) {
+	draw_rounded_rect(origin, size, vec4{radius}, color, rotation, layer, antialiased_edges,
+					  blur_radius);
 }
 
 void Renderer::draw_rounded_rect(vec2 origin, vec2 size, vec4 corner_radii, vec4 color,
-								 f32 rotation, u8 layer, AntialiasEdge antialiased_edges) {
+								 f32 rotation, u8 layer, AntialiasEdge antialiased_edges,
+								 f32 blur_radius) {
 	draw(Sprite{.origin = origin,
 				.size = size,
 				.color = color,
 				.rotation = rotation,
 				.corner_radii = max(corner_radii, vec4{0.0F}),
 				.antialiased_edges = antialiased_edges,
+				.blur_radius = max(blur_radius, 0.0F),
 				.kind = SpriteKind::RoundedRectangle,
 				.layer = layer});
 }

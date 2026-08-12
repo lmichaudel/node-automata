@@ -105,12 +105,33 @@ bool Debugger::wants_keyboard() const {
 	return initialized && ImGui::GetIO().WantCaptureKeyboard;
 }
 
+vec4 Debugger::clear_color() const {
+	return clear_color_value;
+}
+
+vec4 Debugger::grid_color() const {
+	return grid_color_value;
+}
+
+vec4 Debugger::supergrid_color() const {
+	return supergrid_color_value;
+}
+
 void Debugger::draw_metrics() {
 	ImGui::SetNextWindowSize(ImVec2{650.0F, 430.0F}, ImGuiCond_FirstUseEver);
 	if (!ImGui::Begin("Debugger (F1)", &visible)) {
 		ImGui::End();
 		return;
 	}
+
+	ImGui::TextUnformatted("Appearance");
+	constexpr ImGuiColorEditFlags COLOR_FLAGS =
+		ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf |
+		ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_Float;
+	ImGui::ColorEdit4("Clear color", &clear_color_value.r, COLOR_FLAGS);
+	ImGui::ColorEdit4("Grid color", &grid_color_value.r, COLOR_FLAGS);
+	ImGui::ColorEdit4("Supergrid color", &supergrid_color_value.r, COLOR_FLAGS);
+	ImGui::Separator();
 
 	const ImGuiTableFlags flags = ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg |
 								  ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollY |

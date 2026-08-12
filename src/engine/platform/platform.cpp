@@ -61,7 +61,7 @@ void Platform::start(void (*tick)(void), void (*update)(void), void (*draw)(void
 			update();
 		}
 
-		g_renderer->begin_frame();
+		g_renderer->begin_frame(g_renderer->debugger().clear_color());
 		{
 			METRIC_SCOPE("Frame/Game draw");
 			draw();

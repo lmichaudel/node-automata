@@ -24,7 +24,7 @@ struct VertexOutput {
 	float4 color : TEXCOORD3;
 	nointerpolation float4 corner_radii : TEXCOORD4;
 	nointerpolation uint kind : TEXCOORD5;
-	nointerpolation float msdf_range : TEXCOORD6;
+	nointerpolation float effect_range : TEXCOORD6;
 	nointerpolation uint antialiased_edges : TEXCOORD7;
 	nointerpolation float4 auxiliary : TEXCOORD8;
 };
@@ -33,8 +33,14 @@ VertexOutput main(VertexInput input) {
 	const uint kind = (uint)(input.parameters.z + 0.5);
 	// SDF geometry extends beyond its mathematical boundary so the fragment
 	// shader has enough coverage to antialias the outside edge.
-	const bool procedural = kind == 1 || kind == 2;
-	const float2 raster_size = input.size + (procedural ? 3.0 / zoom : 0.0);
+	const bool procedural = kind == 1 || kind == 2 || kind == 5 || kind == 6 || kind == 7;
+	const float blur_radius = kind == 3 ? 0.0 : input.parameters.w;
+	const float raster_margin = 2.0 * blur_radius + 3.0 / zoom;
+	// Lines only need extra raster area across their width. Keeping their longitudinal
+	// bounds exact gives both butt caps zero blur and zero shader antialiasing.
+	const float2 raster_padding = kind == 6 ? float2(0.0, raster_margin) :
+		(kind == 7 ? input.corner_radii.y + raster_margin : raster_margin);
+	const float2 raster_size = input.size + (procedural ? raster_padding : 0.0);
 	const float sine = sin(input.parameters.x);
 	const float cosine = cos(input.parameters.x);
 	const float2 local = input.corner * raster_size;
@@ -63,7 +69,7 @@ VertexOutput main(VertexInput input) {
 	output.color = input.color;
 	output.corner_radii = input.corner_radii;
 	output.kind = kind;
-	output.msdf_range = input.parameters.w;
+	output.effect_range = input.parameters.w;
 	output.antialiased_edges = (uint)(input.parameters.y + 0.5);
 	output.auxiliary = input.uv_rect;
 	return output;
