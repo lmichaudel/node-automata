@@ -32,6 +32,7 @@ class Game {
   private:
 	vec2 view_position{0.0F};
 	f32 view_zoom{1.0F};
+	f32 preview_item_distance{0.0F};
 
 	Pool<MachineSimulationData, MachineRenderData, MachineConnectionData> machines{};
 	Pool<BeltSimulationData, BeltRenderData, BeltConnectionData> belts{};

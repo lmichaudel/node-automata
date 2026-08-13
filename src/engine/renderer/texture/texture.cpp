@@ -33,14 +33,19 @@ bool Texture::init(SDL_GPUDevice* target_device, u32 width, u32 height, std::spa
 		return false;
 	}
 
+	u32 mip_level_count = 1;
+	for (u32 dimension = width > height ? width : height; dimension > 1; dimension >>= 1) {
+		++mip_level_count;
+	}
+
 	const SDL_GPUTextureCreateInfo texture_info{
 		.type = SDL_GPU_TEXTURETYPE_2D,
 		.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-		.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
+		.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER | SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
 		.width = width,
 		.height = height,
 		.layer_count_or_depth = 1,
-		.num_levels = 1,
+		.num_levels = mip_level_count,
 		.sample_count = SDL_GPU_SAMPLECOUNT_1,
 	};
 	SDL_GPUTexture* texture = SDL_CreateGPUTexture(target_device, &texture_info);
@@ -92,6 +97,9 @@ bool Texture::init(SDL_GPUDevice* target_device, u32 width, u32 height, std::spa
 	};
 	SDL_UploadToGPUTexture(copy_pass, &source, &destination_region, false);
 	SDL_EndGPUCopyPass(copy_pass);
+	if (mip_level_count > 1) {
+		SDL_GenerateMipmapsForGPUTexture(command_buffer, texture);
+	}
 	if (!SDL_SubmitGPUCommandBuffer(command_buffer)) {
 		log::error("Failed to submit texture upload: {}", SDL_GetError());
 		SDL_ReleaseGPUTransferBuffer(target_device, transfer_buffer);

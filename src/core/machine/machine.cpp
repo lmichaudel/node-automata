@@ -134,80 +134,47 @@ void machine_draw(MachineRenderData& rd, MachineConnectionData& cd) {
 	const vec2 world_position = world_min + world_size * 0.5F;
 
 	constexpr f32 ROUNDING = 4.0F;
-	constexpr f32 OUTLINE_THICKNESS = 3.0F;
-	constexpr f32 HALF_OUTLINE = OUTLINE_THICKNESS * 0.5F;
-	constexpr f32 FONT_SIZE = 14.0F;
-	constexpr f32 TEXT_PADDING = 4.0F;
-	constexpr f32 PIN_SIZE = BELT_WIDTH;
+	constexpr f32 ICON_SCALE = 0.7F;
+	constexpr f32 SOCKET_WIDTH = CELL_SIZE * 0.6F;
+	constexpr f32 SOCKET_HEIGHT = CELL_SIZE;
+	constexpr f32 SOCKET_ROUNDING = 2.0F;
+	constexpr f32 SOCKET_CHEVRON_LENGTH = SOCKET_WIDTH * 0.4F;
+	constexpr f32 SOCKET_CHEVRON_SPREAD = SOCKET_HEIGHT * 0.3F;
+	constexpr f32 SOCKET_CHEVRON_STROKE = 1.0F;
+	constexpr vec4 SOCKET_COLOR = rgb(63, 62, 66);
+	constexpr vec4 SOCKET_CHEVRON_COLOR = rgba(255, 255, 255, 115);
 
-	constexpr vec4 BODY_COLOR = rgb(247, 242, 232);
-
-	// Soft ambient shadow beneath the complete machine chassis.
-	g_renderer->draw_rounded_rect(world_min + SHADOW_OFFSET - vec2{SHADOW_SPREAD},
-								  world_size + vec2{SHADOW_SPREAD * 2.0F}, ROUNDING + SHADOW_SPREAD,
-								  SHADOW_COLOR, 0.0F, render_layer::AMBIENT_SHADOW,
-								  AntialiasEdge::All, SHADOW_BLUR_RADIUS);
-	// Tight contact shadow that anchors the machine to the floor.
-	g_renderer->draw_rounded_rect(world_min + CONTACT_SHADOW_OFFSET - vec2{CONTACT_SHADOW_SPREAD},
-								  world_size + vec2{CONTACT_SHADOW_SPREAD * 2.0F},
-								  ROUNDING + CONTACT_SHADOW_SPREAD, CONTACT_SHADOW_COLOR, 0.0F,
-								  render_layer::CONTACT_SHADOW, AntialiasEdge::All,
-								  CONTACT_SHADOW_BLUR_RADIUS);
-
-	// Accent-colored machine chassis and header.
+	// Solid accent-colored machine body.
 	g_renderer->draw_rounded_rect(world_min, world_size, ROUNDING, md.accent_color, 0.0F,
 								  render_layer::MACHINE_CHASSIS);
 
-	// Cream lower panel, inset to leave the accent background visible as an outline.
-	const vec2 inner_size = world_size - vec2{OUTLINE_THICKNESS};
-	const f32 inner_rounding = ROUNDING - HALF_OUTLINE;
-	const f32 body_top = world_min.y + CELL_SIZE;
-	const f32 body_bottom = world_min.y + world_size.y - HALF_OUTLINE;
-	const vec2 body_size{inner_size.x, body_bottom - body_top};
-	const vec2 body_origin{world_min.x + HALF_OUTLINE, body_top};
+	// Neutral sockets frame each output and indicate its working direction.
+	if (md.output_count > 0) {
+		const f32 first_output_y =
+			world_position.y - (static_cast<f32>(md.output_count) - 1.0F) * CELL_SIZE * 0.5F;
+		const f32 output_x = rd.flipped ? world_min.x : world_min.x + world_size.x;
+		const vec2 output_direction = rd.flipped ? vec2{-1.0F, 0.0F} : vec2{1.0F, 0.0F};
+		const vec2 output_normal{-output_direction.y, output_direction.x};
+		for (u8 output = 0; output < md.output_count; ++output) {
+			const vec2 socket_center{output_x,
+									 first_output_y + static_cast<f32>(output) * CELL_SIZE};
+			g_renderer->draw_rounded_rect(socket_center -
+										  vec2{SOCKET_WIDTH * 0.5F, SOCKET_HEIGHT * 0.5F},
+									  vec2{SOCKET_WIDTH, SOCKET_HEIGHT}, SOCKET_ROUNDING,
+									  SOCKET_COLOR, 0.0F, render_layer::MACHINE_PIN);
 
-	constexpr AntialiasEdge BODY_EDGES =
-		AntialiasEdge::Right | AntialiasEdge::Bottom | AntialiasEdge::Left;
-
-	// Cream lower machine body.
-	g_renderer->draw_rounded_rect(body_origin, body_size,
-								  vec4{0.0F, 0.0F, inner_rounding, inner_rounding}, BODY_COLOR,
-								  0.0F, render_layer::MACHINE_BODY, BODY_EDGES);
-
-	// Both pin sides share the same top-left light direction.
-	const auto draw_stubs = [&](u8 count, bool left, vec4 color) {
-		constexpr vec4 HIGHLIGHT_COLOR = rgb(157, 157, 159);
-		constexpr vec4 SHADE_COLOR = rgb(31, 24, 19, 80);
-
-		const f32 first_y =
-			world_position.y - static_cast<f32>(count - 1) * CELL_SIZE * 0.5f - PIN_SIZE;
-		const f32 x = left ? (world_min.x - PIN_SIZE) : (world_min.x + world_size.x - PIN_SIZE);
-		for (u8 i = 0; i < count; ++i) {
-			const vec2 position{x, first_y + static_cast<f32>(i) * CELL_SIZE};
-			// Soft ambient shadow beneath the machine chassis and this connection pin.
-			g_renderer->draw_circle(position + SHADOW_OFFSET, PIN_SIZE, SHADOW_COLOR,
-									render_layer::AMBIENT_SHADOW, SHADOW_BLUR_RADIUS);
-			// Tight contact shadow beneath the machine chassis and this connection pin.
-			g_renderer->draw_circle(position + CONTACT_SHADOW_OFFSET, PIN_SIZE,
-									CONTACT_SHADOW_COLOR, render_layer::CONTACT_SHADOW,
-									CONTACT_SHADOW_BLUR_RADIUS);
-			// Lower-right shade on this connection pin.
-			g_renderer->draw_circle(position + vec2{0.5F, 0.75F}, PIN_SIZE, SHADE_COLOR,
-									render_layer::MACHINE_PIN);
-
-			auto const offset = PIN_SIZE / 8.0f;
-			g_renderer->draw_circle(position, PIN_SIZE, HIGHLIGHT_COLOR, render_layer::MACHINE_PIN);
-			g_renderer->draw_circle(position + vec2{offset}, PIN_SIZE - offset, color,
-									render_layer::MACHINE_PIN);
+			const vec2 tip = socket_center + output_direction * (SOCKET_CHEVRON_LENGTH * 0.5F);
+			const vec2 tail = socket_center - output_direction * (SOCKET_CHEVRON_LENGTH * 0.5F);
+			const vec2 wing = output_normal * (SOCKET_CHEVRON_SPREAD * 0.5F);
+			g_renderer->draw_line(tail - wing, tip, SOCKET_CHEVRON_STROKE,
+								  SOCKET_CHEVRON_COLOR, render_layer::MACHINE_PIN);
+			g_renderer->draw_line(tail + wing, tip, SOCKET_CHEVRON_STROKE,
+								  SOCKET_CHEVRON_COLOR, render_layer::MACHINE_PIN);
 		}
-	};
+	}
 
-	draw_stubs(md.input_count, !rd.flipped, rgba(76, 175, 80));
-	draw_stubs(md.output_count, rd.flipped, rgba(255, 167, 38));
-
-	const f32 text_y = world_min.y + (CELL_SIZE - FONT_SIZE) * 0.5F;
-	// Machine name in the colored header.
-	g_renderer->draw_text(g_assets->font<FontAsset::Inconsolata>(), md.name,
-						  vec2{world_min.x + TEXT_PADDING, text_y}, FONT_SIZE, vec4{1.0F},
-						  render_layer::WORLD_TEXT);
+	const f32 icon_size = min(world_size.x, world_size.y) * ICON_SCALE;
+	g_renderer->draw_texture(g_assets->texture<SpriteAsset::Smelter>(),
+							 world_position - vec2{icon_size * 0.5F}, vec2{icon_size}, vec4{1.0F},
+							 vec4{0.0F, 0.0F, 1.0F, 1.0F}, 0.0F, render_layer::MACHINE_BODY);
 }

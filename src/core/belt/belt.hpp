@@ -74,4 +74,5 @@ struct BeltRenderData {
 
 struct BeltConnectionData {};
 
-void belt_draw(BeltRenderData& render_data, BeltConnectionData& connection_data);
+void belt_draw(BeltRenderData& render_data, BeltConnectionData& connection_data,
+			   f32 detail_distance = 0.0F);

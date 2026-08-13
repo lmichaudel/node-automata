@@ -29,7 +29,7 @@ class Renderer {
 	void release();
 	// Sets the world-space point shown at the top-left and the number of pixels per world unit.
 	void set_view(vec2 position, f32 zoom = 1.0F);
-	void begin_frame(vec4 clear_color = rgba(31, 31, 36));
+	void begin_frame(vec4 clear_color = rgba(232, 225, 213));
 	void draw(const Sprite& sprite);
 	void draw_texture(Texture* texture, vec2 origin, vec2 size, vec4 color = vec4{1.0F},
 					  vec4 uv_rect = vec4{0.0F, 0.0F, 1.0F, 1.0F}, f32 rotation = 0.0F,

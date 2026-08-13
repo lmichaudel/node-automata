@@ -7,6 +7,14 @@
 #include <backends/imgui_impl_sdlgpu3.h>
 #include <imgui.h>
 
+namespace {
+vec4 adaptive_grid_color(vec4 background, f32 contrast, f32 alpha) {
+	const f32 luminance = dot(vec3{background}, vec3{0.2126F, 0.7152F, 0.0722F});
+	const vec3 contrast_color = luminance > 0.5F ? vec3{0.0F} : vec3{1.0F};
+	return vec4{mix(vec3{background}, contrast_color, contrast), alpha};
+}
+} // namespace
+
 Debugger::~Debugger() {
 	release();
 }
@@ -110,11 +118,11 @@ vec4 Debugger::clear_color() const {
 }
 
 vec4 Debugger::grid_color() const {
-	return grid_color_value;
+	return adaptive_grid_color(clear_color_value, 0.14F, 0.55F);
 }
 
 vec4 Debugger::supergrid_color() const {
-	return supergrid_color_value;
+	return adaptive_grid_color(clear_color_value, 0.28F, 0.70F);
 }
 
 void Debugger::draw_metrics() {
@@ -129,8 +137,6 @@ void Debugger::draw_metrics() {
 		ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf |
 		ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_Float;
 	ImGui::ColorEdit4("Clear color", &clear_color_value.r, COLOR_FLAGS);
-	ImGui::ColorEdit4("Grid color", &grid_color_value.r, COLOR_FLAGS);
-	ImGui::ColorEdit4("Supergrid color", &supergrid_color_value.r, COLOR_FLAGS);
 	ImGui::Separator();
 
 	const ImGuiTableFlags flags = ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg |

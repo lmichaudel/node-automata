@@ -30,9 +30,7 @@ class Debugger {
   private:
 	bool initialized{false};
 	bool visible{true};
-	vec4 clear_color_value{rgba(52, 52, 55)};
-	vec4 grid_color_value{rgba(68, 68, 71, 210)};
-	vec4 supergrid_color_value{rgba(122, 122, 125, 225)};
+	vec4 clear_color_value{rgba(232, 225, 213)};
 
 	void draw_metrics();
 };

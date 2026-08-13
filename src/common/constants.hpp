@@ -44,14 +44,7 @@ constexpr vec2 cell(vec2i c) {
 	return vec2{CELL_SIZE} * (vec2)c;
 }
 
-constexpr f32 BELT_WIDTH = CELL_SIZE / 4.0f;
-
-constexpr vec2 SHADOW_OFFSET{3.0F, 5.0F};
-constexpr f32 SHADOW_SPREAD = 2.0F;
-constexpr f32 SHADOW_BLUR_RADIUS = 4.5F;
-constexpr vec4 SHADOW_COLOR = rgba(0, 0, 0, 72);
-
-constexpr vec2 CONTACT_SHADOW_OFFSET{1.0F, 2.0F};
-constexpr f32 CONTACT_SHADOW_SPREAD = 0.75F;
-constexpr f32 CONTACT_SHADOW_BLUR_RADIUS = 1.0F;
-constexpr vec4 CONTACT_SHADOW_COLOR = rgba(0, 0, 0, 145);
+constexpr f32 BELT_WIDTH = CELL_SIZE / 2.5f;
+constexpr vec4 BELT_COLOR = rgb(99, 99, 99);
+constexpr f32 BELT_RAIL_WIDTH = 0.0F;
+constexpr vec4 BELT_RAIL_COLOR = rgb(29, 29, 32);

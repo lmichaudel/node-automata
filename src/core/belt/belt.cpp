@@ -223,14 +223,20 @@ void BeltSimulationData::pop_head() {
 	}
 }
 
-void belt_draw(BeltRenderData& rd, BeltConnectionData& cd) {
+void belt_draw(BeltRenderData& rd, BeltConnectionData& cd, f32 detail_distance) {
 	(void)cd;
 
 	if (rd.waypoints.size() < 2)
 		return;
 
 	constexpr f32 TURN_RADIUS = CELL_SIZE * 0.5F;
-	constexpr vec4 BELT_COLOR = rgb(247, 242, 232);
+	constexpr f32 HALF_PI = 1.57079632679F;
+	// Half a turn's arc length guarantees exactly two uniformly spaced markers per turn.
+	constexpr f32 MARKER_SPACING = TURN_RADIUS * HALF_PI * 0.5F;
+	constexpr f32 CHEVRON_LENGTH = BELT_WIDTH * 0.4F;
+	constexpr f32 CHEVRON_SPREAD = BELT_WIDTH * 0.65F;
+	constexpr f32 CHEVRON_STROKE = 0.65F;
+	constexpr vec4 MARKER_COLOR = rgb(151, 148, 143);
 
 	const auto direction_between = [&](usize from, usize to) {
 		const vec2 delta = vec2{rd.waypoints[to] - rd.waypoints[from]};
@@ -253,9 +259,9 @@ void belt_draw(BeltRenderData& rd, BeltConnectionData& cd) {
 		for (usize i = 1; i < rd.waypoints.size(); ++i) {
 			const vec2 direction = direction_between(i - 1, i);
 			const vec2 start = vec2{rd.waypoints[i - 1]} +
-				(is_corner(i - 1) ? direction * TURN_RADIUS : vec2{0.0F});
-			const vec2 end = vec2{rd.waypoints[i]} -
-				(is_corner(i) ? direction * TURN_RADIUS : vec2{0.0F});
+							   (is_corner(i - 1) ? direction * TURN_RADIUS : vec2{0.0F});
+			const vec2 end =
+				vec2{rd.waypoints[i]} - (is_corner(i) ? direction * TURN_RADIUS : vec2{0.0F});
 			assert(dot(end - start, direction) >= 0.0F);
 			g_renderer->draw_line(start + offset, end + offset, width, color, layer, blur_radius);
 		}
@@ -268,18 +274,91 @@ void belt_draw(BeltRenderData& rd, BeltConnectionData& cd) {
 			const vec2 incoming = direction_between(i - 1, i);
 			const vec2 outgoing = direction_between(i, i + 1);
 			const f32 cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
-			const vec2 center = vec2{rd.waypoints[i]} - incoming * TURN_RADIUS +
-				outgoing * TURN_RADIUS + offset;
+			const vec2 center =
+				vec2{rd.waypoints[i]} - incoming * TURN_RADIUS + outgoing * TURN_RADIUS + offset;
 			const f32 rotation = std::atan2(outgoing.y, outgoing.x);
 			g_renderer->draw_rounded_line_90(center, TURN_RADIUS, width, cross < 0.0F, color,
-										 rotation, layer, blur_radius);
+											 rotation, layer, blur_radius);
+		}
+	};
+	const auto draw_chevron = [&](vec2 position, vec2 direction) {
+		const vec2 normal{-direction.y, direction.x};
+		const vec2 tip = position + direction * (CHEVRON_LENGTH * 0.5F);
+		const vec2 tail = position - direction * (CHEVRON_LENGTH * 0.5F);
+		const vec2 wing = normal * (CHEVRON_SPREAD * 0.5F);
+		const vec2 lower_tail = tail - wing;
+		const vec2 upper_tail = tail + wing;
+		const vec2 lower_tip = tip + normalize(tip - lower_tail) * (CHEVRON_STROKE * 0.5F);
+		const vec2 upper_tip = tip + normalize(tip - upper_tail) * (CHEVRON_STROKE * 0.5F);
+		g_renderer->draw_line(lower_tail, lower_tip, CHEVRON_STROKE, MARKER_COLOR,
+							  render_layer::BELT_DETAIL);
+		g_renderer->draw_line(upper_tail, upper_tip, CHEVRON_STROKE, MARKER_COLOR,
+							  render_layer::BELT_DETAIL);
+	};
+	const auto draw_details = [&] {
+		f32 path_length = 0.0F;
+		for (usize i = 1; i < rd.waypoints.size(); ++i) {
+			const vec2 direction = direction_between(i - 1, i);
+			const vec2 start = vec2{rd.waypoints[i - 1]} +
+							   (is_corner(i - 1) ? direction * TURN_RADIUS : vec2{0.0F});
+			const vec2 end =
+				vec2{rd.waypoints[i]} - (is_corner(i) ? direction * TURN_RADIUS : vec2{0.0F});
+			path_length += dot(end - start, direction);
+			if (is_corner(i))
+				path_length += TURN_RADIUS * HALF_PI;
+		}
+
+		const auto draw_marker_at = [&](f32 distance) {
+			for (usize i = 1; i < rd.waypoints.size(); ++i) {
+				const vec2 incoming = direction_between(i - 1, i);
+				const vec2 start = vec2{rd.waypoints[i - 1]} +
+								   (is_corner(i - 1) ? incoming * TURN_RADIUS : vec2{0.0F});
+				const vec2 end =
+					vec2{rd.waypoints[i]} - (is_corner(i) ? incoming * TURN_RADIUS : vec2{0.0F});
+				const f32 straight_length = dot(end - start, incoming);
+				if (distance <= straight_length) {
+					draw_chevron(start + incoming * distance, incoming);
+					return;
+				}
+				distance -= straight_length;
+
+				if (!is_corner(i))
+					continue;
+				const f32 arc_length = TURN_RADIUS * HALF_PI;
+				if (distance <= arc_length) {
+					const vec2 outgoing = direction_between(i, i + 1);
+					const f32 cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
+					const f32 turn_sign = cross > 0.0F ? 1.0F : -1.0F;
+					const f32 angle = turn_sign * distance / TURN_RADIUS;
+					const f32 sine = std::sin(angle);
+					const f32 cosine = std::cos(angle);
+					const vec2 start_radius = -outgoing;
+					const vec2 radius_direction{start_radius.x * cosine - start_radius.y * sine,
+												start_radius.x * sine + start_radius.y * cosine};
+					const vec2 tangent = turn_sign * vec2{-radius_direction.y, radius_direction.x};
+					const vec2 center =
+						vec2{rd.waypoints[i]} - incoming * TURN_RADIUS + outgoing * TURN_RADIUS;
+					draw_chevron(center + radius_direction * TURN_RADIUS, tangent);
+					return;
+				}
+				distance -= arc_length;
+			}
+		};
+
+		// Use one continuous distance sequence so spacing stays uniform through turns.
+		const u32 marker_count = max(1U, static_cast<u32>(path_length / MARKER_SPACING));
+		const f32 first_marker =
+			(path_length - static_cast<f32>(marker_count - 1) * MARKER_SPACING) * 0.5F;
+		for (u32 marker = 0; marker < marker_count; ++marker) {
+			const f32 distance = std::fmod(
+				first_marker + detail_distance + static_cast<f32>(marker) * MARKER_SPACING,
+				path_length);
+			draw_marker_at(distance);
 		}
 	};
 
-	// Soft cast shadow, tight contact shadow, then the belt itself.
-	draw_path(SHADOW_OFFSET, BELT_WIDTH + SHADOW_SPREAD * 2.0F, SHADOW_COLOR,
-			  render_layer::AMBIENT_SHADOW, SHADOW_BLUR_RADIUS);
-	draw_path(CONTACT_SHADOW_OFFSET, BELT_WIDTH + CONTACT_SHADOW_SPREAD * 2.0F,
-			  CONTACT_SHADOW_COLOR, render_layer::CONTACT_SHADOW, CONTACT_SHADOW_BLUR_RADIUS);
+	draw_path(vec2{0.0F}, BELT_WIDTH + BELT_RAIL_WIDTH * 2.0F, BELT_RAIL_COLOR,
+			  render_layer::BELT_TRACK, 0.0F);
 	draw_path(vec2{0.0F}, BELT_WIDTH, BELT_COLOR, render_layer::BELT, 0.0F);
+	draw_details();
 }

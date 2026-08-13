@@ -435,8 +435,7 @@ void Renderer::draw_circle(vec2 origin, f32 radius, vec4 color, u8 layer, f32 bl
 	}
 }
 
-void Renderer::draw_line(vec2 start, vec2 end, f32 width, vec4 color, u8 layer,
-					 f32 blur_radius) {
+void Renderer::draw_line(vec2 start, vec2 end, f32 width, vec4 color, u8 layer, f32 blur_radius) {
 	const vec2 delta = end - start;
 	const f32 line_length = length(delta);
 	if (line_length > 0.0F && width > 0.0F) {
@@ -452,7 +451,7 @@ void Renderer::draw_line(vec2 start, vec2 end, f32 width, vec4 color, u8 layer,
 }
 
 void Renderer::draw_rounded_line_90(vec2 center, f32 radius, f32 width, bool clockwise, vec4 color,
-								f32 rotation, u8 layer, f32 blur_radius) {
+									f32 rotation, u8 layer, f32 blur_radius) {
 	if (radius > 0.0F && width > 0.0F) {
 		draw(Sprite{.origin = center - vec2{radius},
 					.size = vec2{radius * 2.0F},

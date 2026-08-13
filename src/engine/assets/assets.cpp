@@ -80,10 +80,19 @@ bool Assets::init(SDL_GPUDevice* target_device, std::string_view asset_root) {
 			return false;
 		}
 	}
+	for (usize index = 0; index < SPRITE_COUNT; ++index) {
+		if (!load_texture(textures[index], SPRITE_PATHS[index])) {
+			release();
+			return false;
+		}
+	}
 	return true;
 }
 
 void Assets::release() {
+	for (Texture& texture : textures) {
+		texture.release();
+	}
 	for (FontResource& resource : fonts) {
 		resource.font.release();
 		resource.texture.release();
