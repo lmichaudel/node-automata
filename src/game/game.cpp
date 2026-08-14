@@ -1,6 +1,7 @@
 #include "game.hpp"
 #include "common/globals.hpp"
 #include "common/log.hpp"
+#include "content/colors.hpp"
 #include "content/machines.hpp"
 #include "core/belt/belt.hpp"
 #include "core/junction/junction.hpp"
@@ -115,14 +116,14 @@ void Game::draw() {
 			constexpr f32 TURN_RADIUS = CELL_SIZE * 0.5F;
 			constexpr f32 HALF_PI = 1.57079632679F;
 			constexpr f32 ITEM_SPACING = CELL_SIZE * 2.25F;
-			constexpr f32 ITEM_RADIUS = BELT_WIDTH;
+			constexpr f32 ITEM_RADIUS = BELT_WIDTH * 0.6;
 			constexpr f32 ITEM_SPRITE_SIZE = ITEM_RADIUS * 1.35F;
 			constexpr std::array ITEM_SPRITES{
-				SpriteAsset::Ore, SpriteAsset::Gear, SpriteAsset::Ingot,
+				SpriteAsset::Ore,	 SpriteAsset::Gear,		 SpriteAsset::Ingot,
 				SpriteAsset::Engine, SpriteAsset::Propeller,
 			};
 			constexpr std::array ITEM_COLORS{
-				rgb(139, 162, 246), rgb(240, 184, 78), rgb(109, 207, 190),
+				rgb(139, 162, 246), rgb(240, 184, 78),	rgb(109, 207, 190),
 				rgb(239, 125, 116), rgb(190, 148, 239),
 			};
 
@@ -185,21 +186,18 @@ void Game::draw() {
 					std::fmod(preview_item_distance + item * ITEM_SPACING, path_length);
 				const vec2 center = position_on_path(distance);
 
-				const f32 rail_radius = ITEM_RADIUS + BELT_RAIL_WIDTH / 2;
-				g_renderer->draw_circle(center - vec2{rail_radius}, rail_radius, BELT_RAIL_COLOR,
-										render_layer::BELT_DETAIL);
-				g_renderer->draw_circle(center - vec2{ITEM_RADIUS}, ITEM_RADIUS, BELT_COLOR,
-										render_layer::BELT_DETAIL);
+				g_renderer->draw_circle(center - vec2{ITEM_RADIUS}, ITEM_RADIUS,
+										COLOR::BELT_ITEM_TOKEN, render_layer::BELT_DETAIL);
 
 				u32 sprite_seed = item * 0x9E3779B9U;
 				sprite_seed ^= static_cast<u32>(rd.waypoints.front().x) * 0x85EBCA6BU;
 				sprite_seed ^= static_cast<u32>(rd.waypoints.front().y) * 0xC2B2AE35U;
 				const usize sprite_index = sprite_seed % ITEM_SPRITES.size();
 				const SpriteAsset sprite = ITEM_SPRITES[sprite_index];
-				g_renderer->draw_texture(g_assets->texture(sprite),
-										 center - vec2{ITEM_SPRITE_SIZE * 0.5F}, vec2{ITEM_SPRITE_SIZE},
-										 ITEM_COLORS[sprite_index], vec4{0.0F, 0.0F, 1.0F, 1.0F},
-										 0.0F, render_layer::BELT_DETAIL);
+				g_renderer->draw_texture(
+					g_assets->texture(sprite), center - vec2{ITEM_SPRITE_SIZE * 0.5F},
+					vec2{ITEM_SPRITE_SIZE}, ITEM_COLORS[sprite_index], vec4{0.0F, 0.0F, 1.0F, 1.0F},
+					0.0F, render_layer::BELT_DETAIL);
 			}
 		}
 	}

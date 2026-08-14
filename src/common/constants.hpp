@@ -44,7 +44,7 @@ constexpr vec2 cell(vec2i c) {
 	return vec2{CELL_SIZE} * (vec2)c;
 }
 
-constexpr f32 BELT_WIDTH = CELL_SIZE / 2.5f;
+constexpr f32 BELT_WIDTH = CELL_SIZE / 1.5f;
 constexpr vec4 BELT_COLOR = rgb(99, 99, 99);
 constexpr f32 BELT_RAIL_WIDTH = 0.0F;
 constexpr vec4 BELT_RAIL_COLOR = rgb(29, 29, 32);

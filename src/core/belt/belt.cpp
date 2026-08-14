@@ -1,5 +1,6 @@
 #include "belt.hpp"
 #include "common/globals.hpp"
+#include "content/colors.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -231,12 +232,11 @@ void belt_draw(BeltRenderData& rd, BeltConnectionData& cd, f32 detail_distance) 
 
 	constexpr f32 TURN_RADIUS = CELL_SIZE * 0.5F;
 	constexpr f32 HALF_PI = 1.57079632679F;
-	// Half a turn's arc length guarantees exactly two uniformly spaced markers per turn.
+
 	constexpr f32 MARKER_SPACING = TURN_RADIUS * HALF_PI * 0.5F;
 	constexpr f32 CHEVRON_LENGTH = BELT_WIDTH * 0.4F;
 	constexpr f32 CHEVRON_SPREAD = BELT_WIDTH * 0.65F;
 	constexpr f32 CHEVRON_STROKE = 0.65F;
-	constexpr vec4 MARKER_COLOR = rgb(151, 148, 143);
 
 	const auto direction_between = [&](usize from, usize to) {
 		const vec2 delta = vec2{rd.waypoints[to] - rd.waypoints[from]};
@@ -245,6 +245,7 @@ void belt_draw(BeltRenderData& rd, BeltConnectionData& cd, f32 detail_distance) 
 		assert((delta.x == 0.0F) != (delta.y == 0.0F));
 		return delta / segment_length;
 	};
+
 	const auto is_corner = [&](usize waypoint) {
 		if (waypoint == 0 || waypoint + 1 >= rd.waypoints.size())
 			return false;
@@ -290,9 +291,9 @@ void belt_draw(BeltRenderData& rd, BeltConnectionData& cd, f32 detail_distance) 
 		const vec2 upper_tail = tail + wing;
 		const vec2 lower_tip = tip + normalize(tip - lower_tail) * (CHEVRON_STROKE * 0.5F);
 		const vec2 upper_tip = tip + normalize(tip - upper_tail) * (CHEVRON_STROKE * 0.5F);
-		g_renderer->draw_line(lower_tail, lower_tip, CHEVRON_STROKE, MARKER_COLOR,
+		g_renderer->draw_line(lower_tail, lower_tip, CHEVRON_STROKE, COLOR::BELT_CHEVRON,
 							  render_layer::BELT_DETAIL);
-		g_renderer->draw_line(upper_tail, upper_tip, CHEVRON_STROKE, MARKER_COLOR,
+		g_renderer->draw_line(upper_tail, upper_tip, CHEVRON_STROKE, COLOR::BELT_CHEVRON,
 							  render_layer::BELT_DETAIL);
 	};
 	const auto draw_details = [&] {
@@ -350,15 +351,15 @@ void belt_draw(BeltRenderData& rd, BeltConnectionData& cd, f32 detail_distance) 
 		const f32 first_marker =
 			(path_length - static_cast<f32>(marker_count - 1) * MARKER_SPACING) * 0.5F;
 		for (u32 marker = 0; marker < marker_count; ++marker) {
-			const f32 distance = std::fmod(
-				first_marker + detail_distance + static_cast<f32>(marker) * MARKER_SPACING,
-				path_length);
+			const f32 distance = std::fmod(first_marker + detail_distance +
+											   static_cast<f32>(marker) * MARKER_SPACING,
+										   path_length);
 			draw_marker_at(distance);
 		}
 	};
 
 	draw_path(vec2{0.0F}, BELT_WIDTH + BELT_RAIL_WIDTH * 2.0F, BELT_RAIL_COLOR,
 			  render_layer::BELT_TRACK, 0.0F);
-	draw_path(vec2{0.0F}, BELT_WIDTH, BELT_COLOR, render_layer::BELT, 0.0F);
+	draw_path(vec2{0.0F}, BELT_WIDTH, COLOR::BELT_MAIN, render_layer::BELT, 0.0F);
 	draw_details();
 }
