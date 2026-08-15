@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL_main.h>
 #include <cstdlib>
+#include <memory>
 
 enum class AppState {
 	IN_GAME
@@ -44,16 +45,12 @@ int main(int, char**) {
 		Renderer renderer{};
 		g_renderer = &renderer;
 
-		Assets assets{};
-		g_assets = &assets;
-
-		if (!platform.init() || !renderer.init(platform.window_handle()) ||
-			!assets.init(renderer.gpu_device())) {
+		if (!platform.init() || !renderer.init(platform.window_handle())) {
 			return EXIT_FAILURE;
 		}
 
-		Game game{};
-		g_game = &game;
+		auto game = std::make_unique<Game>();
+		g_game = game.get();
 
 		platform.start(tick, update, draw);
 	}

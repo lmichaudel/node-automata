@@ -222,6 +222,14 @@ float4 main(FragmentInput input) : SV_Target0 {
 	const bool antialiased = input.kind == 1 || input.kind == 5 || input.kind == 6 ||
 		input.kind == 7 ||
 		edge_is_antialiased(input.local_position, input.half_size, input.antialiased_edges);
-	return float4(input.color.rgb,
-		input.color.a * coverage(signed_distance, antialiased, input.effect_range) * cap_coverage);
+	const float outer_coverage =
+		coverage(signed_distance, antialiased, input.effect_range) * cap_coverage;
+	float3 shape_color = input.color.rgb;
+	if (input.kind == 2 && input.auxiliary.a > 0.0) {
+		const float inner_coverage = coverage(
+			signed_distance + input.auxiliary.a, true, input.effect_range
+		);
+		shape_color = lerp(input.auxiliary.rgb, input.color.rgb, inner_coverage);
+	}
+	return float4(shape_color, input.color.a * outer_coverage);
 }

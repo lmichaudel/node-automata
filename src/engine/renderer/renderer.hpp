@@ -1,78 +1,56 @@
 #pragma once
 
-#include "common/constants.hpp"
-#include "engine/debug/debugger.hpp"
-#include "engine/renderer/buffer/buffer.hpp"
-#include "engine/renderer/program/program.hpp"
-#include "engine/renderer/sampler/sampler.hpp"
-#include "engine/renderer/sprite/sprite.hpp"
+#include "common/types.hpp"
+#include "core/terrain/terrain.hpp"
 
 #include <array>
-#include <string_view>
 #include <vector>
 
+struct SDL_GPUBuffer;
+struct SDL_GPUCommandBuffer;
 struct SDL_GPUDevice;
+struct SDL_GPUGraphicsPipeline;
+struct SDL_GPUSampler;
+struct SDL_GPUTexture;
+struct SDL_GPUTransferBuffer;
 struct SDL_Window;
-class Texture;
-class Font;
+
+enum class SpriteIcon : u8 {
+	Ore,
+	Gear,
+	Ingot,
+	Engine,
+	Propeller,
+	Smelter,
+	Count,
+};
 
 class Renderer {
   public:
-	static constexpr usize LAYER_COUNT = render_layer::COUNT;
-
 	Renderer() = default;
 	~Renderer();
 	Renderer(const Renderer&) = delete;
 	Renderer& operator=(const Renderer&) = delete;
 
-	bool init(SDL_Window* window);
+	bool init(SDL_Window* target_window);
 	void release();
-	// Sets the world-space point shown at the top-left and the number of pixels per world unit.
-	void set_view(vec2 position, f32 zoom = 1.0F);
-	void begin_frame(vec4 clear_color = rgba(232, 225, 213));
-	void draw(const Sprite& sprite);
-	void draw_texture(Texture* texture, vec2 origin, vec2 size, vec4 color = vec4{1.0F},
-					  vec4 uv_rect = vec4{0.0F, 0.0F, 1.0F, 1.0F}, f32 rotation = 0.0F,
-					  u8 layer = 0);
-	void draw_circle(vec2 origin, f32 radius, vec4 color, u8 layer = 0, f32 blur_radius = 0.0F);
-	// Draws a line with butt caps. Blur and antialiasing only affect its two long edges.
-	void draw_line(vec2 start, vec2 end, f32 width, vec4 color, u8 layer = 0,
-				   f32 blur_radius = 0.0F);
-	// Draws a perfect quarter-circle centered at `center`, from the left tangent to
-	// the bottom (clockwise) or top (counter-clockwise) tangent, before rotation.
-	// Its butt caps are neither blurred nor antialiased.
-	void draw_rounded_line_90(vec2 center, f32 radius, f32 width, bool clockwise, vec4 color,
-							  f32 rotation = 0.0F, u8 layer = 0, f32 blur_radius = 0.0F);
-	// Draws a 90-degree ring from the left edge to either the bottom edge
-	// (clockwise) or top edge (counter-clockwise), before applying rotation.
-	void draw_quarter_ring(vec2 origin, f32 size, f32 thickness, bool clockwise, vec4 color,
-						   f32 rotation = 0.0F, u8 layer = 0, f32 blur_radius = 0.0F);
-	void draw_grid(f32 cell_size, f32 line_width, f32 minimum_pixel_width, u32 supergrid_interval,
-				   vec4 line_color, vec4 supergrid_color, u8 layer = 0);
-	void draw_water_tile(vec2 origin, vec2 size, vec4 color, vec4 land_neighbors, f32 time,
-						 u8 layer = 0);
-	void draw_land_tile(vec2 origin, vec2 size, vec4 color, bool show_grid = true, u8 layer = 0);
-	void draw_river_tile(vec2 origin, vec2 size, vec4 color, vec4 connections, f32 time,
-						 u8 layer = 0);
-	void draw_rounded_rect(vec2 origin, vec2 size, f32 radius, vec4 color, f32 rotation = 0.0F,
-						   u8 layer = 0, AntialiasEdge antialiased_edges = AntialiasEdge::All,
-						   f32 blur_radius = 0.0F);
-	// Corner radii are ordered top-left, top-right, bottom-right, bottom-left.
-	void draw_rounded_rect(vec2 origin, vec2 size, vec4 corner_radii, vec4 color,
-						   f32 rotation = 0.0F, u8 layer = 0,
-						   AntialiasEdge antialiased_edges = AntialiasEdge::All,
-						   f32 blur_radius = 0.0F);
-	void draw_text(const Font& font, std::string_view text, vec2 top_left, f32 font_size,
-				   vec4 color = vec4{1.0F}, u8 layer = 0);
+
+	void begin_frame(vec4 clear = rgba(31, 35, 42));
 	bool end_frame();
 
-	SDL_GPUDevice* gpu_device() const;
-	Debugger& debugger() {
-		return debug_overlay;
-	}
-
+	void set_view(vec2 position, f32 zoom);
+	void draw_terrain(const Terrain& terrain);
+	void draw_sprite(SpriteIcon icon, vec2 origin, vec2 size, vec4 tint = vec4{1.0F});
+	void draw_rounded_rect(vec2 origin, vec2 size, f32 radius, vec4 fill,
+		f32 border_width = 0.0F, vec4 border = vec4{0.0F});
+	void draw_building(vec2i grid_origin, vec2i footprint, SpriteIcon icon, vec4 fill,
+		vec4 border = rgba(48, 54, 59));
   private:
-	struct Instance {
+	struct TerrainInstance {
+		vec2 origin;
+		u32 neighborhood;
+	};
+	struct SpriteInstance {
 		vec2 origin;
 		vec2 size;
 		vec4 uv_rect;
@@ -80,41 +58,57 @@ class Renderer {
 		vec4 parameters;
 		vec4 corner_radii;
 	};
-
-	struct DrawCommand {
-		Texture* texture;
-		u32 first_instance;
-		u32 instance_count;
+	struct SpriteTexture {
+		SDL_GPUTexture* handle{nullptr};
+		u32 width{0};
+		u32 height{0};
+	};
+	struct SpriteDrawCommand {
+		SDL_GPUTexture* texture{nullptr};
+		u32 first_instance{0};
+		u32 instance_count{0};
 	};
 
-	struct Batch {
-		std::vector<Instance> instances{};
-		std::vector<DrawCommand> commands{};
-	};
-
-	static constexpr usize MAX_SPRITES = 16'384;
+	static constexpr usize MAX_TERRAIN_INSTANCES = TERRAIN_SIZE * TERRAIN_SIZE;
+	static constexpr usize MAX_SPRITE_INSTANCES = 4096;
+	static constexpr usize SPRITE_ICON_COUNT = static_cast<usize>(SpriteIcon::Count);
 
 	SDL_Window* window{nullptr};
 	SDL_GPUDevice* device{nullptr};
-	Program program{};
-	Buffer vertex_buffer{};
-	Buffer index_buffer{};
-	Buffer instance_buffer{};
-	Sampler nearest_sampler{};
-	Sampler linear_sampler{};
-	Debugger debug_overlay{};
-	Texture* white_texture{nullptr};
-	std::vector<Instance> instances{};
-	std::array<Batch, LAYER_COUNT> batches{};
-	vec4 clear_color{0.0F};
+	SDL_GPUGraphicsPipeline* terrain_pipeline{nullptr};
+	SDL_GPUGraphicsPipeline* sprite_pipeline{nullptr};
+	SDL_GPUBuffer* vertex_buffer{nullptr};
+	SDL_GPUBuffer* index_buffer{nullptr};
+	SDL_GPUBuffer* instance_buffer{nullptr};
+	SDL_GPUTransferBuffer* transfer_buffer{nullptr};
+	SDL_GPUBuffer* sprite_vertex_buffer{nullptr};
+	SDL_GPUBuffer* sprite_index_buffer{nullptr};
+	SDL_GPUBuffer* sprite_instance_buffer{nullptr};
+	SDL_GPUTransferBuffer* sprite_transfer_buffer{nullptr};
+	SDL_GPUSampler* sprite_sampler{nullptr};
+	SpriteTexture white_texture{};
+	std::array<SpriteTexture, SPRITE_ICON_COUNT> sprite_icons{};
+
+	const Terrain* pending_terrain{nullptr};
+	const Terrain* cached_terrain{nullptr};
+	u64 uploaded_revision{0};
+	std::vector<TerrainInstance> terrain_instances{};
+	std::vector<SpriteInstance> sprite_instances{};
+	std::vector<SpriteDrawCommand> sprite_commands{};
+
 	vec2 view_position{0.0F};
 	f32 view_zoom{1.0F};
-	usize sprite_count{0};
+	vec4 clear_color{rgba(31, 35, 42)};
 
-	bool overflow_reported{false};
-
-	bool create_program();
+	bool create_terrain_pipeline();
+	bool create_sprite_pipeline();
 	bool create_buffers();
-	bool create_samplers();
-	bool upload_static_data();
+	bool upload_static_geometry();
+	bool load_sprite_textures();
+	bool load_sprite_texture(SpriteTexture& texture, const char* relative_path);
+	bool upload_texture(SpriteTexture& texture, u32 width, u32 height, const u8* pixels);
+	bool upload_terrain(SDL_GPUCommandBuffer* command);
+	bool upload_sprites(SDL_GPUCommandBuffer* command);
+	void queue_sprite(SDL_GPUTexture* texture, const SpriteInstance& instance);
+	void rebuild_terrain_instances(const Terrain& terrain);
 };
