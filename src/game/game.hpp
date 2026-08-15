@@ -4,6 +4,7 @@
 #include "core/belt/belt.hpp"
 #include "core/junction/junction.hpp"
 #include "core/machine/machine.hpp"
+#include "game/map.hpp"
 
 class Game {
   public:
@@ -33,6 +34,8 @@ class Game {
 	vec2 view_position{0.0F};
 	f32 view_zoom{1.0F};
 	f32 preview_item_distance{0.0F};
+	f32 water_time{0.0F};
+	Map map{{64, 36}};
 
 	Pool<MachineSimulationData, MachineRenderData, MachineConnectionData> machines{};
 	Pool<BeltSimulationData, BeltRenderData, BeltConnectionData> belts{};

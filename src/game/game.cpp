@@ -97,16 +97,11 @@ void Game::update() {
 
 	g_renderer->set_view(view_position, view_zoom);
 	preview_item_distance += PREVIEW_ITEM_SPEED * g_platform->delta_time();
+	water_time += g_platform->delta_time();
 }
 
 void Game::draw() {
-	constexpr f32 GRID_LINE_WIDTH = 0.7f;
-	constexpr f32 GRID_MIN_PIXEL_WIDTH = 1.f;
-	constexpr u32 SUPERGRID_INTERVAL = 7;
-	// Minor and major world grid lines behind the factory.
-	g_renderer->draw_grid(CELL_SIZE, GRID_LINE_WIDTH, GRID_MIN_PIXEL_WIDTH, SUPERGRID_INTERVAL,
-						  g_renderer->debugger().grid_color(),
-						  g_renderer->debugger().supergrid_color(), render_layer::BACKGROUND);
+	map.draw(water_time);
 
 	for (auto [rd, cd] : belts.each<BeltRenderData, BeltConnectionData>()) {
 		belt_draw(rd, cd, preview_item_distance);
@@ -212,6 +207,16 @@ void Game::draw() {
 }
 
 ID Game::create_machine(MachineType type, vec2i position) {
+	const auto& machine_type = get_machine_type_data(type);
+	const vec2i first_tile = position / static_cast<i32>(CELL_SIZE);
+	for (i32 y = 0; y < machine_type.size.y; ++y) {
+		for (i32 x = 0; x < machine_type.size.x; ++x) {
+			if (!map.is_buildable(first_tile + vec2i{x, y})) {
+				return INVALID_ID;
+			}
+		}
+	}
+
 	MachineSimulationData sd{};
 	MachineRenderData rd{};
 	MachineConnectionData cd{};
@@ -231,6 +236,10 @@ ID Game::create_belt() {
 }
 
 ID Game::create_junction(vec2i position) {
+	if (!map.is_buildable(position / static_cast<i32>(CELL_SIZE))) {
+		return INVALID_ID;
+	}
+
 	JunctionSimulationData sd{};
 	JunctionRenderData rd{};
 	JunctionConnectionData cd{};

@@ -20,20 +20,24 @@ constexpr u32 CELL_SIZE = 20;
 
 // Global back-to-front render order. Keep all world rendering on these named layers.
 namespace render_layer {
-	constexpr u8 BACKGROUND = 0;
-	constexpr u8 AMBIENT_SHADOW = 1;
-	constexpr u8 CONTACT_SHADOW = 2;
+	constexpr u8 WATER = 0;
+	constexpr u8 LAND = 1;
+	constexpr u8 RIVER = 2;
+	constexpr u8 GRID = RIVER;
+	constexpr u8 BACKGROUND = RIVER;
+	constexpr u8 AMBIENT_SHADOW = 3;
+	constexpr u8 CONTACT_SHADOW = 4;
 
-	constexpr u8 BELT_TRACK = 3;
-	constexpr u8 BELT = 4;
-	constexpr u8 BELT_DETAIL = 5;
+	constexpr u8 BELT_TRACK = 5;
+	constexpr u8 BELT = 6;
+	constexpr u8 BELT_DETAIL = 7;
 
-	constexpr u8 MACHINE_CHASSIS = 6;
-	constexpr u8 MACHINE_BODY = 7;
-	constexpr u8 MACHINE_PIN = 8;
-	constexpr u8 WORLD_TEXT = 9;
-	constexpr u8 DEBUG = 11;
-	constexpr usize COUNT = 12;
+	constexpr u8 MACHINE_CHASSIS = 8;
+	constexpr u8 MACHINE_BODY = 9;
+	constexpr u8 MACHINE_PIN = 10;
+	constexpr u8 WORLD_TEXT = 11;
+	constexpr u8 DEBUG = 13;
+	constexpr usize COUNT = 14;
 } // namespace render_layer
 
 constexpr f32 cell(i32 c) {

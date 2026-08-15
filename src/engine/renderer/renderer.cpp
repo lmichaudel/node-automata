@@ -496,6 +496,37 @@ void Renderer::draw_grid(f32 cell_size, f32 line_width, f32 minimum_pixel_width,
 	});
 }
 
+void Renderer::draw_water_tile(vec2 origin, vec2 size, vec4 color, vec4 land_neighbors, f32 time,
+							   u8 layer) {
+	draw(Sprite{.origin = origin,
+				.size = size,
+				.uv_rect = land_neighbors,
+				.color = color,
+				.corner_radii = vec4{max(time, 0.0F), 0.0F, 0.0F, 0.0F},
+				.kind = SpriteKind::Water,
+				.layer = layer});
+}
+
+void Renderer::draw_land_tile(vec2 origin, vec2 size, vec4 color, bool show_grid, u8 layer) {
+	draw(Sprite{.origin = origin,
+				.size = size,
+				.color = color,
+				.corner_radii = vec4{show_grid ? 1.0F : 0.0F, 0.0F, 0.0F, 0.0F},
+				.kind = SpriteKind::Land,
+				.layer = layer});
+}
+
+void Renderer::draw_river_tile(vec2 origin, vec2 size, vec4 color, vec4 connections, f32 time,
+							   u8 layer) {
+	draw(Sprite{.origin = origin,
+				.size = size,
+				.uv_rect = connections,
+				.color = color,
+				.corner_radii = vec4{max(time, 0.0F), 0.0F, 0.0F, 0.0F},
+				.kind = SpriteKind::River,
+				.layer = layer});
+}
+
 void Renderer::draw_rounded_rect(vec2 origin, vec2 size, f32 radius, vec4 color, f32 rotation,
 								 u8 layer, AntialiasEdge antialiased_edges, f32 blur_radius) {
 	draw_rounded_rect(origin, size, vec4{radius}, color, rotation, layer, antialiased_edges,

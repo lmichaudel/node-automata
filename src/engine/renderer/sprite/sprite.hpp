@@ -12,7 +12,10 @@ enum class SpriteKind : u8 {
 	Grid,
 	QuarterRing,
 	Line,
-	RoundedLine90
+	RoundedLine90,
+	Water,
+	Land,
+	River,
 };
 
 enum class AntialiasEdge : u8 {

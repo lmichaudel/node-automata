@@ -12,6 +12,7 @@ struct FragmentInput {
 	nointerpolation float effect_range : TEXCOORD6;
 	nointerpolation uint antialiased_edges : TEXCOORD7;
 	nointerpolation float4 auxiliary : TEXCOORD8;
+	float2 world_position : TEXCOORD9;
 };
 
 float median3(float3 value) {
@@ -79,9 +80,17 @@ float grid_coverage(float2 world_position, float spacing, float world_width,
 			   grid_line_coverage(world_position.y, spacing, world_width, minimum_pixel_width));
 }
 
+float distance_to_segment(float2 sample_position, float2 start, float2 end) {
+	const float2 segment = end - start;
+	const float along = saturate(dot(sample_position - start, segment) /
+		max(dot(segment, segment), 0.0001));
+	return length(sample_position - (start + segment * along));
+}
+
 float4 main(FragmentInput input) : SV_Target0 {
 	// 0: texture, 1: circle, 2: rounded rectangle, 3: MSDF, 4: grid,
-	// 5: quarter ring, 6: line, 7: perfect 90-degree rounded line.
+	// 5: quarter ring, 6: line, 7: perfect 90-degree rounded line,
+	// 8: animated water tile, 9: land tile, 10: connected animated river.
 	if (input.kind == 0) {
 		return sprite_texture.Sample(sprite_sampler, input.uv) * input.color;
 	}
@@ -109,6 +118,70 @@ float4 main(FragmentInput input) : SV_Target0 {
 		const float opacity = max(base_coverage * input.color.a,
 							  super_coverage * input.auxiliary.a);
 		return float4(color, opacity);
+	}
+	if (input.kind == 8) {
+		const float time = input.corner_radii.x;
+		const float2 world = input.world_position;
+		const float wave_a = sin(world.x * 0.045 + world.y * 0.022 + time * 0.85);
+		const float wave_b = sin(world.x * -0.018 + world.y * 0.067 - time * 0.62);
+		const float broad_wave = wave_a * 0.55 + wave_b * 0.45;
+		const float ripple = smoothstep(0.78, 0.96,
+			0.5 + 0.5 * sin(world.x * 0.095 - world.y * 0.052 + time * 1.15 + wave_b));
+
+		const float2 edge_distance = input.half_size - abs(input.local_position);
+		float coast_distance = 10000.0;
+		coast_distance = min(coast_distance,
+			input.auxiliary.x > 0.5 ? input.local_position.y + input.half_size.y : 10000.0);
+		coast_distance = min(coast_distance,
+			input.auxiliary.y > 0.5 ? edge_distance.x : 10000.0);
+		coast_distance = min(coast_distance,
+			input.auxiliary.z > 0.5 ? edge_distance.y : 10000.0);
+		coast_distance = min(coast_distance,
+			input.auxiliary.w > 0.5 ? input.local_position.x + input.half_size.x : 10000.0);
+		const float shore = 1.0 - smoothstep(1.0, 6.5, coast_distance);
+		const float foam = shore * smoothstep(0.50, 0.95,
+			0.5 + 0.5 * sin(world.x * 0.24 + world.y * 0.19 - time * 1.45));
+
+		float3 color = input.color.rgb;
+		color *= 0.96 + broad_wave * 0.035;
+		color = lerp(color, float3(0.57, 0.79, 0.80), ripple * 0.13);
+		color = lerp(color, float3(0.76, 0.88, 0.82), shore * 0.20 + foam * 0.18);
+		return float4(color, input.color.a);
+	}
+	if (input.kind == 9) {
+		const float edge_distance = min(input.half_size.x - abs(input.local_position.x),
+			input.half_size.y - abs(input.local_position.y));
+		const float pixel_world_size = max(fwidth(edge_distance), 0.0001);
+		const float grid = 1.0 - smoothstep(0.45 - pixel_world_size, 0.45 + pixel_world_size,
+			edge_distance);
+		const float variation = 0.012 * sin(input.world_position.x * 0.071 +
+			input.world_position.y * 0.047);
+		const float visible_grid = grid * input.corner_radii.x;
+		return float4(input.color.rgb * (1.0 + variation - visible_grid * 0.09), input.color.a);
+	}
+	if (input.kind == 10) {
+		const float2 position = input.local_position / input.half_size;
+		float river_distance = 1.0;
+		river_distance = min(river_distance,
+			input.auxiliary.x > 0.5 ? distance_to_segment(position, 0.0, float2(0.0, -1.0)) : 1.0);
+		river_distance = min(river_distance,
+			input.auxiliary.y > 0.5 ? distance_to_segment(position, 0.0, float2(1.0, 0.0)) : 1.0);
+		river_distance = min(river_distance,
+			input.auxiliary.z > 0.5 ? distance_to_segment(position, 0.0, float2(0.0, 1.0)) : 1.0);
+		river_distance = min(river_distance,
+			input.auxiliary.w > 0.5 ? distance_to_segment(position, 0.0, float2(-1.0, 0.0)) : 1.0);
+
+		const float antialias_width = max(fwidth(river_distance), 0.002);
+		const float bank = 1.0 - smoothstep(0.34 - antialias_width, 0.34 + antialias_width,
+			river_distance);
+		const float water = 1.0 - smoothstep(0.27 - antialias_width, 0.27 + antialias_width,
+			river_distance);
+		const float flow = smoothstep(0.72, 0.98, 0.5 + 0.5 * sin(
+			dot(input.world_position, float2(0.095, 0.135)) - input.corner_radii.x * 2.4));
+		const float3 bank_color = float3(0.30, 0.42, 0.34);
+		float3 water_color = input.color.rgb * (0.96 + flow * 0.10);
+		water_color = lerp(water_color, float3(0.67, 0.84, 0.82), flow * 0.22);
+		return float4(lerp(bank_color, water_color, water), bank * input.color.a);
 	}
 
 	float signed_distance;

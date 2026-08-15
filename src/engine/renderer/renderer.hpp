@@ -42,13 +42,18 @@ class Renderer {
 	// the bottom (clockwise) or top (counter-clockwise) tangent, before rotation.
 	// Its butt caps are neither blurred nor antialiased.
 	void draw_rounded_line_90(vec2 center, f32 radius, f32 width, bool clockwise, vec4 color,
-						  f32 rotation = 0.0F, u8 layer = 0, f32 blur_radius = 0.0F);
+							  f32 rotation = 0.0F, u8 layer = 0, f32 blur_radius = 0.0F);
 	// Draws a 90-degree ring from the left edge to either the bottom edge
 	// (clockwise) or top edge (counter-clockwise), before applying rotation.
 	void draw_quarter_ring(vec2 origin, f32 size, f32 thickness, bool clockwise, vec4 color,
 						   f32 rotation = 0.0F, u8 layer = 0, f32 blur_radius = 0.0F);
 	void draw_grid(f32 cell_size, f32 line_width, f32 minimum_pixel_width, u32 supergrid_interval,
 				   vec4 line_color, vec4 supergrid_color, u8 layer = 0);
+	void draw_water_tile(vec2 origin, vec2 size, vec4 color, vec4 land_neighbors, f32 time,
+						 u8 layer = 0);
+	void draw_land_tile(vec2 origin, vec2 size, vec4 color, bool show_grid = true, u8 layer = 0);
+	void draw_river_tile(vec2 origin, vec2 size, vec4 color, vec4 connections, f32 time,
+						 u8 layer = 0);
 	void draw_rounded_rect(vec2 origin, vec2 size, f32 radius, vec4 color, f32 rotation = 0.0F,
 						   u8 layer = 0, AntialiasEdge antialiased_edges = AntialiasEdge::All,
 						   f32 blur_radius = 0.0F);

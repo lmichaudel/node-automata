@@ -27,6 +27,7 @@ struct VertexOutput {
 	nointerpolation float effect_range : TEXCOORD6;
 	nointerpolation uint antialiased_edges : TEXCOORD7;
 	nointerpolation float4 auxiliary : TEXCOORD8;
+	float2 world_position : TEXCOORD9;
 };
 
 VertexOutput main(VertexInput input) {
@@ -72,5 +73,6 @@ VertexOutput main(VertexInput input) {
 	output.effect_range = input.parameters.w;
 	output.antialiased_edges = (uint)(input.parameters.y + 0.5);
 	output.auxiliary = input.uv_rect;
+	output.world_position = center + rotated;
 	return output;
 }
