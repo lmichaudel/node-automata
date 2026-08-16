@@ -17,6 +17,7 @@ class Platform {
 	f32 delta_time() const {
 		return dt_;
 	}
+	vec2 window_size() const;
 
   private:
 	SDL_Window* window{nullptr};

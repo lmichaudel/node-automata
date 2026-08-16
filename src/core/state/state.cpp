@@ -1,112 +1,314 @@
 #include "state.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <utility>
 
 namespace {
-	f32 random_value(vec2 coordinate) {
-		const f32 value = std::sin(dot(coordinate, vec2{127.1F, 311.7F})) * 43758.5453F;
-		return value - std::floor(value);
-	}
+	constexpr std::array<Hex, 1> MINER_FOOTPRINT{{{0, 0}}};
+	constexpr std::array<Hex, 3> SMELTER_FOOTPRINT{{{0, 0}, {1, 0}, {0, 1}}};
+	constexpr std::array<Hex, 4> ASSEMBLER_FOOTPRINT{{{0, 0}, {1, 0}, {0, 1}, {-1, 1}}};
+	constexpr std::array<Hex, 3> SINK_FOOTPRINT{{{0, 0}, {1, 0}, {1, -1}}};
 
-	f32 value_noise(vec2 position) {
-		const vec2 cell = glm::floor(position);
-		const vec2 offset = glm::fract(position);
-		const vec2 blend = offset * offset * (3.0F - 2.0F * offset);
-		const f32 top =
-			glm::mix(random_value(cell), random_value(cell + vec2{1.0F, 0.0F}), blend.x);
-		const f32 bottom = glm::mix(random_value(cell + vec2{0.0F, 1.0F}),
-									random_value(cell + vec2{1.0F, 1.0F}), blend.x);
-		return glm::mix(top, bottom, blend.y);
-	}
+	const std::array<BuildingDefinition, static_cast<usize>(BuildingKind::Count)> DEFINITIONS{{
+		{"Miner", MINER_FOOTPRINT, SpriteIcon::Ore, rgba(96, 174, 136), ItemKind::Ore, 75},
+		{"Smelter", SMELTER_FOOTPRINT, SpriteIcon::Smelter, rgba(225, 139, 77), ItemKind::Ingot,
+		 105},
+		{"Assembler", ASSEMBLER_FOOTPRINT, SpriteIcon::Gear, rgba(98, 145, 214), ItemKind::Gear,
+		 135},
+		{"Depot", SINK_FOOTPRINT, SpriteIcon::Engine, rgba(176, 105, 190), ItemKind::Gear, 1},
+	}};
 
-	f32 fractal_noise(vec2 position) {
-		f32 result = 0.0F;
-		f32 amplitude = 0.5F;
-		for (i32 octave = 0; octave < 4; ++octave) {
-			result += value_noise(position) * amplitude;
-			position = position * 2.03F + vec2{17.1F, 9.2F};
-			amplitude *= 0.5F;
-		}
-		return result / 0.9375F;
-	}
-
-	f32 elliptical_peak(vec2 position, vec2 center, vec2 radii, f32 rotation) {
-		const vec2 offset = position - center;
-		const f32 cosine = std::cos(rotation);
-		const f32 sine = std::sin(rotation);
-		const vec2 rotated{
-			offset.x * cosine + offset.y * sine,
-			-offset.x * sine + offset.y * cosine,
-		};
-		return 1.0F - length(rotated / radii);
+	i32 hex_distance(Hex hex) {
+		return (std::abs(hex.q) + std::abs(hex.r) + std::abs(hex.q + hex.r)) / 2;
 	}
 } // namespace
 
+const BuildingDefinition& State::definition(BuildingKind kind) {
+	return DEFINITIONS[static_cast<usize>(kind)];
+}
+
 State::State() {
-	for (i32 y = 0; y < static_cast<i32>(TERRAIN_SIZE); ++y) {
-		for (i32 x = 0; x < static_cast<i32>(TERRAIN_SIZE); ++x) {
-			const vec2 position{static_cast<f32>(x), static_cast<f32>(y)};
+	const ID miner = place_building(BuildingKind::Miner, {-8, 1});
+	const ID smelter = place_building(BuildingKind::Smelter, {-3, 0});
+	const ID assembler = place_building(BuildingKind::Assembler, {3, -1});
+	const ID sink = place_building(BuildingKind::Sink, {8, -2});
+	place_belt_path(std::array<Hex, 4>{{{-7, 1}, {-6, 1}, {-5, 1}, {-4, 1}}}, miner, smelter);
+	place_belt_path(std::array<Hex, 4>{{{-1, 0}, {0, 0}, {1, 0}, {2, 0}}}, smelter, assembler);
+	place_belt_path(std::array<Hex, 4>{{{4, -1}, {5, -1}, {6, -1}, {7, -1}}}, assembler, sink);
+}
 
-			// Warp an ellipse with layered noise to create bays, headlands, and an
-			// asymmetric coastline while retaining a dependable ocean border.
-			const vec2 coast_warp{
-				(fractal_noise(position * 0.055F + vec2{4.0F, 11.0F}) - 0.5F) * 9.0F,
-				(fractal_noise(position * 0.055F + vec2{23.0F, 2.0F}) - 0.5F) * 9.0F,
-			};
-			const vec2 island_offset = position + coast_warp - vec2{47.5F, 49.0F};
-			const f32 coast_detail =
-				(fractal_noise(position * 0.13F + vec2{8.0F, 19.0F}) - 0.5F) * 0.14F;
-			const f32 island_field =
-				1.0F - length(island_offset / vec2{42.0F, 44.0F}) + coast_detail;
-			const bool island = island_field > 0.0F;
+vec2 State::hex_to_world(Hex hex) {
+	constexpr f32 SQRT_3 = 1.7320508075688772F;
+	return {HEX_RADIUS * SQRT_3 * (static_cast<f32>(hex.q) + static_cast<f32>(hex.r) * 0.5F),
+			HEX_RADIUS * 1.5F * static_cast<f32>(hex.r)};
+}
 
-			TileKind kind = island ? TileKind::LAND : TileKind::WATER;
-			u8 elevation = island ? 1 : 0;
+Hex State::world_to_hex(vec2 world) {
+	constexpr f32 SQRT_3 = 1.7320508075688772F;
+	const f32 q = (SQRT_3 / 3.0F * world.x - world.y / 3.0F) / HEX_RADIUS;
+	const f32 r = (2.0F / 3.0F * world.y) / HEX_RADIUS;
+	const f32 s = -q - r;
+	i32 rq = static_cast<i32>(std::round(q));
+	i32 rr = static_cast<i32>(std::round(r));
+	i32 rs = static_cast<i32>(std::round(s));
+	const f32 dq = std::abs(static_cast<f32>(rq) - q);
+	const f32 dr = std::abs(static_cast<f32>(rr) - r);
+	const f32 ds = std::abs(static_cast<f32>(rs) - s);
+	if (dq > dr && dq > ds)
+		rq = -rr - rs;
+	else if (dr > ds)
+		rr = -rq - rs;
+	return {rq, rr};
+}
 
-			if (island) {
-				// Several overlapping, rotated masses produce a ridge rather than a
-				// circular mound. Fine noise breaks up each elevation contour.
-				const f32 ridge = std::max({
-					elliptical_peak(position, vec2{57.0F, 34.0F}, vec2{23.0F, 12.0F}, 0.55F),
-					elliptical_peak(position, vec2{44.0F, 29.0F}, vec2{14.0F, 9.0F}, 0.30F),
-					elliptical_peak(position, vec2{67.0F, 43.0F}, vec2{14.0F, 8.0F}, 0.80F),
-				});
-				const f32 mountain_detail =
-					(fractal_noise(position * 0.16F + vec2{31.0F, 7.0F}) - 0.5F) * 0.24F;
-				const f32 mountain = ridge + mountain_detail;
-				if (mountain > 0.08F) {
-					kind = TileKind::MOUNTAIN;
-					elevation = 2;
-					if (mountain > 0.32F)
-						elevation = 3;
-					if (mountain > 0.55F)
-						elevation = 4;
-					if (mountain > 0.75F)
-						elevation = 5;
-				}
+bool State::contains(Hex hex) {
+	return hex_distance(hex) <= GRID_RADIUS;
+}
 
-				// A narrow highland stream becomes a wider meandering river as it
-				// travels south to the coast.
-				if (y >= 31) {
-					const f32 progress = std::clamp((position.y - 31.0F) / 62.0F, 0.0F, 1.0F);
-					const f32 river_center = 58.0F - progress * 20.0F +
-											 std::sin(progress * 8.5F) * 3.2F +
-											 std::sin(progress * 19.0F) * 1.25F;
-					const f32 river_width = 0.75F + progress * 1.55F;
-					if (std::abs(position.x - river_center) < river_width) {
-						kind = TileKind::WATER;
-						elevation = 0;
-					}
-				}
+i32 State::direction_between(Hex from, Hex to) {
+	const Hex delta = to - from;
+	for (usize index = 0; index < HEX_DIRECTIONS.size(); ++index) {
+		if (HEX_DIRECTIONS[index] == delta)
+			return static_cast<i32>(index);
+	}
+	return -1;
+}
+
+std::vector<Hex> State::occupied_cells(const Building& building) const {
+	std::vector<Hex> result;
+	for (Hex offset : definition(building.kind).footprint)
+		result.push_back(building.origin + offset);
+	return result;
+}
+
+const Building* State::building_at(Hex cell) const {
+	for (const Building& building : buildings) {
+		for (Hex offset : definition(building.kind).footprint) {
+			if (building.origin + offset == cell)
+				return &building;
+		}
+	}
+	return nullptr;
+}
+
+Building* State::building_at(Hex cell) {
+	return const_cast<Building*>(std::as_const(*this).building_at(cell));
+}
+
+const Belt* State::belt_at(Hex cell) const {
+	const auto found = std::find_if(belts.begin(), belts.end(), [cell](const Belt& belt) {
+		return belt.cell == cell;
+	});
+	return found == belts.end() ? nullptr : &*found;
+}
+
+Belt* State::belt_at(Hex cell) {
+	return const_cast<Belt*>(std::as_const(*this).belt_at(cell));
+}
+
+bool State::can_place_building(BuildingKind kind, Hex origin) const {
+	for (Hex offset : definition(kind).footprint) {
+		const Hex cell = origin + offset;
+		if (!contains(cell) || building_at(cell) != nullptr || belt_at(cell) != nullptr)
+			return false;
+	}
+	return true;
+}
+
+ID State::place_building(BuildingKind kind, Hex origin) {
+	if (!can_place_building(kind, origin))
+		return INVALID_ID;
+	const ID id = next_building_id++;
+	buildings.push_back({.id = id, .kind = kind, .origin = origin});
+	return id;
+}
+
+bool State::can_place_belt(Hex cell) const {
+	return contains(cell) && building_at(cell) == nullptr;
+}
+
+Belt& State::ensure_belt(Hex cell) {
+	if (Belt* existing = belt_at(cell))
+		return *existing;
+	belts.push_back({.cell = cell});
+	return belts.back();
+}
+
+void State::connect_belts(Hex from, Hex to) {
+	const i32 direction = direction_between(from, to);
+	if (direction < 0)
+		return;
+	ensure_belt(from);
+	ensure_belt(to);
+	Belt* source = belt_at(from);
+	Belt* destination = belt_at(to);
+	source->outputs |= static_cast<u8>(1U << static_cast<u32>(direction));
+	destination->inputs |= static_cast<u8>(1U << static_cast<u32>((direction + 3) % 6));
+}
+
+void State::connect_endpoint(ID building, Hex belt, bool building_to_belt) {
+	if (building == INVALID_ID || belt_at(belt) == nullptr)
+		return;
+	const auto duplicate =
+		std::find_if(endpoints.begin(), endpoints.end(), [&](const BeltEndpoint& endpoint) {
+			return endpoint.building == building && endpoint.belt == belt &&
+				   endpoint.building_to_belt == building_to_belt;
+		});
+	if (duplicate == endpoints.end())
+		endpoints.push_back({building, belt, building_to_belt});
+}
+
+void State::place_belt_path(std::span<const Hex> path, ID source, ID destination) {
+	if (path.empty())
+		return;
+	std::vector<Hex> valid;
+	for (Hex cell : path) {
+		if (can_place_belt(cell) && (valid.empty() || valid.back() != cell))
+			valid.push_back(cell);
+	}
+	if (valid.empty())
+		return;
+	for (Hex cell : valid)
+		ensure_belt(cell);
+	for (usize index = 1; index < valid.size(); ++index)
+		connect_belts(valid[index - 1], valid[index]);
+	connect_endpoint(source, valid.front(), true);
+	connect_endpoint(destination, valid.back(), false);
+}
+
+void State::erase_at(Hex cell) {
+	if (Building* building = building_at(cell)) {
+		const ID id = building->id;
+		std::erase_if(buildings, [id](const Building& candidate) {
+			return candidate.id == id;
+		});
+		std::erase_if(endpoints, [id](const BeltEndpoint& endpoint) {
+			return endpoint.building == id;
+		});
+		return;
+	}
+	if (belt_at(cell) == nullptr)
+		return;
+	std::erase_if(belts, [cell](const Belt& belt) {
+		return belt.cell == cell;
+	});
+	std::erase_if(endpoints, [cell](const BeltEndpoint& endpoint) {
+		return endpoint.belt == cell;
+	});
+	for (Belt& belt : belts) {
+		const i32 direction = direction_between(belt.cell, cell);
+		if (direction >= 0) {
+			belt.inputs &= static_cast<u8>(~(1U << static_cast<u32>(direction)));
+			belt.outputs &= static_cast<u8>(~(1U << static_cast<u32>(direction)));
+		}
+	}
+}
+
+bool State::building_accepts(Building& building, ItemKind item) {
+	switch (building.kind) {
+	case BuildingKind::Miner:
+		return false;
+	case BuildingKind::Smelter:
+		if (item != ItemKind::Ore || building.input >= 6)
+			return false;
+		++building.input;
+		return true;
+	case BuildingKind::Assembler:
+		if (item != ItemKind::Ingot || building.input >= 8)
+			return false;
+		++building.input;
+		return true;
+	case BuildingKind::Sink:
+		delivered += item == ItemKind::Gear ? 5U : 1U;
+		return true;
+	case BuildingKind::Count:
+		return false;
+	}
+	return false;
+}
+
+void State::advance_buildings() {
+	for (Building& building : buildings) {
+		const BuildingDefinition& def = definition(building.kind);
+		if (building.kind == BuildingKind::Sink)
+			continue;
+		const u32 required = building.kind == BuildingKind::Miner
+								 ? 0U
+								 : (building.kind == BuildingKind::Assembler ? 2U : 1U);
+		if (building.output >= 5 || building.input < required)
+			continue;
+		if (++building.progress >= def.work_ticks) {
+			building.progress = 0;
+			building.input -= required;
+			++building.output;
+		}
+	}
+	for (Building& building : buildings) {
+		if (building.output == 0)
+			continue;
+		for (const BeltEndpoint& endpoint : endpoints) {
+			if (endpoint.building != building.id || !endpoint.building_to_belt)
+				continue;
+			Belt* belt = belt_at(endpoint.belt);
+			if (belt != nullptr && !belt->item) {
+				belt->item = BeltItem{definition(building.kind).output, 0.0F};
+				--building.output;
+				break;
 			}
-			terrain.set_kind({x, y}, kind);
-			terrain.set_elevation({x, y}, elevation);
+		}
+	}
+}
+
+void State::advance_belts() {
+	constexpr f32 BELT_SPEED = 0.055F;
+	for (Belt& belt : belts) {
+		if (belt.item)
+			belt.item->progress = std::min(1.0F, belt.item->progress + BELT_SPEED);
+	}
+	for (Belt& belt : belts) {
+		if (!belt.item || belt.item->progress < 1.0F)
+			continue;
+		std::array<i32, 6> choices{};
+		u32 count = 0;
+		for (i32 direction = 0; direction < 6; ++direction) {
+			if ((belt.outputs & (1U << static_cast<u32>(direction))) != 0)
+				choices[count++] = direction;
+		}
+		bool moved = false;
+		for (u32 attempt = 0; attempt < count; ++attempt) {
+			const u32 choice = (static_cast<u32>(belt.round_robin) + attempt) % count;
+			Belt* target = belt_at(belt.cell + HEX_DIRECTIONS[static_cast<usize>(choices[choice])]);
+			if (target != nullptr && !target->item) {
+				target->item = BeltItem{belt.item->kind, 0.0F};
+				belt.item.reset();
+				belt.round_robin = static_cast<u8>((choice + 1) % count);
+				moved = true;
+				break;
+			}
+		}
+		if (moved)
+			continue;
+		for (const BeltEndpoint& endpoint : endpoints) {
+			if (endpoint.belt != belt.cell || endpoint.building_to_belt)
+				continue;
+			auto found =
+				std::find_if(buildings.begin(), buildings.end(), [&](const Building& building) {
+					return building.id == endpoint.building;
+				});
+			if (found != buildings.end() && building_accepts(*found, belt.item->kind)) {
+				belt.item.reset();
+				break;
+			}
 		}
 	}
 }
 
 void State::tick() {
+	++ticks;
+	advance_buildings();
+	advance_belts();
 }
 
 void State::update() {

@@ -35,3 +35,16 @@ target("node-automata")
         set_optimize("fastest")
         add_defines("NDEBUG")
     end
+
+target("hex-factory-tests")
+    set_kind("binary")
+    set_default(false)
+    add_files("tests/state_tests.cpp", "src/core/state/state.cpp")
+    add_includedirs("src")
+    add_packages("glm")
+
+    if is_plat("windows") then
+        add_cxxflags("/GR-", "/EHs-c-", {force = true})
+    else
+        add_cxxflags("-fno-rtti", "-fno-exceptions", {force = true})
+    end

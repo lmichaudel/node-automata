@@ -23,8 +23,8 @@ void update() {
 	switch (app_state) {
 	case AppState::IN_GAME:
 		g_state->update();
-		g_controller->update();
 		g_viewer->update();
+		g_controller->update();
 		break;
 	}
 }

@@ -12,7 +12,7 @@ bool Platform::init() {
 		return false;
 	}
 
-	window = SDL_CreateWindow("Node Automata", 1280, 720, 0);
+	window = SDL_CreateWindow("Hex Factory", 1280, 720, SDL_WINDOW_RESIZABLE);
 	if (!window) {
 		log::error("Failed to create window: {}", SDL_GetError());
 		SDL_Quit();
@@ -63,4 +63,11 @@ void Platform::start(void (*tick)(void), void (*update)(void), void (*draw)(void
 Platform::~Platform() {
 	SDL_DestroyWindow(window);
 	SDL_Quit();
+}
+
+vec2 Platform::window_size() const {
+	i32 width = 0;
+	i32 height = 0;
+	SDL_GetWindowSize(window, &width, &height);
+	return {static_cast<f32>(width), static_cast<f32>(height)};
 }
