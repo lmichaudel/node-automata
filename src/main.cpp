@@ -1,4 +1,5 @@
 #include "common/globals.hpp"
+#include "core/controller/controller.hpp"
 
 #include <SDL3/SDL_main.h>
 #include <cstdlib>
@@ -13,7 +14,7 @@ AppState app_state{AppState::IN_GAME};
 void tick() {
 	switch (app_state) {
 	case AppState::IN_GAME:
-		g_game->tick();
+		g_state->tick();
 		break;
 	}
 }
@@ -21,7 +22,9 @@ void tick() {
 void update() {
 	switch (app_state) {
 	case AppState::IN_GAME:
-		g_game->update();
+		g_state->update();
+		g_controller->update();
+		g_viewer->update();
 		break;
 	}
 }
@@ -29,7 +32,8 @@ void update() {
 void draw() {
 	switch (app_state) {
 	case AppState::IN_GAME:
-		g_game->draw();
+		g_viewer->draw();
+		g_controller->draw();
 		break;
 	}
 }
@@ -49,8 +53,14 @@ int main(int, char**) {
 			return EXIT_FAILURE;
 		}
 
-		auto game = std::make_unique<Game>();
-		g_game = game.get();
+		auto state = std::make_unique<State>();
+		g_state = state.get();
+
+		Controller controller{*state.get()};
+		g_controller = &controller;
+
+		Viewer viewer{*state.get()};
+		g_viewer = &viewer;
 
 		platform.start(tick, update, draw);
 	}

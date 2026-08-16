@@ -1,7 +1,7 @@
 #pragma once
 
 #include "common/types.hpp"
-#include "core/terrain/terrain.hpp"
+#include "core/state/terrain/terrain.hpp"
 
 #include <array>
 #include <vector>
@@ -41,10 +41,11 @@ class Renderer {
 	void set_view(vec2 position, f32 zoom);
 	void draw_terrain(const Terrain& terrain);
 	void draw_sprite(SpriteIcon icon, vec2 origin, vec2 size, vec4 tint = vec4{1.0F});
-	void draw_rounded_rect(vec2 origin, vec2 size, f32 radius, vec4 fill,
-		f32 border_width = 0.0F, vec4 border = vec4{0.0F});
+	void draw_rounded_rect(vec2 origin, vec2 size, f32 radius, vec4 fill, f32 border_width = 0.0F,
+						   vec4 border = vec4{0.0F});
 	void draw_building(vec2i grid_origin, vec2i footprint, SpriteIcon icon, vec4 fill,
-		vec4 border = rgba(48, 54, 59));
+					   vec4 border = rgba(48, 54, 59));
+
   private:
 	struct TerrainInstance {
 		vec2 origin;

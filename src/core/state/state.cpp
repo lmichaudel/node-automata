@@ -1,28 +1,9 @@
-#include "game.hpp"
-#include "common/globals.hpp"
+#include "state.hpp"
 
-#include <SDL3/SDL_mouse.h>
 #include <algorithm>
-#include <array>
 #include <cmath>
 
 namespace {
-	struct Building {
-		vec2i origin;
-		vec2i footprint;
-		SpriteIcon icon;
-		vec4 color;
-	};
-
-	constexpr std::array BUILDINGS{
-		Building{{22, 50}, {2, 2}, SpriteIcon::Ore, rgba(137, 157, 148)},
-		Building{{26, 49}, {3, 2}, SpriteIcon::Gear, rgba(199, 158, 92)},
-		Building{{31, 49}, {2, 3}, SpriteIcon::Ingot, rgba(137, 158, 177)},
-		Building{{35, 48}, {4, 3}, SpriteIcon::Engine, rgba(178, 116, 101)},
-		Building{{25, 54}, {3, 3}, SpriteIcon::Propeller, rgba(105, 156, 170)},
-		Building{{30, 54}, {3, 2}, SpriteIcon::Smelter, rgba(177, 132, 91)},
-	};
-
 	f32 random_value(vec2 coordinate) {
 		const f32 value = std::sin(dot(coordinate, vec2{127.1F, 311.7F})) * 43758.5453F;
 		return value - std::floor(value);
@@ -32,10 +13,10 @@ namespace {
 		const vec2 cell = glm::floor(position);
 		const vec2 offset = glm::fract(position);
 		const vec2 blend = offset * offset * (3.0F - 2.0F * offset);
-		const f32 top = glm::mix(random_value(cell), random_value(cell + vec2{1.0F, 0.0F}),
-			blend.x);
+		const f32 top =
+			glm::mix(random_value(cell), random_value(cell + vec2{1.0F, 0.0F}), blend.x);
 		const f32 bottom = glm::mix(random_value(cell + vec2{0.0F, 1.0F}),
-			random_value(cell + vec2{1.0F, 1.0F}), blend.x);
+									random_value(cell + vec2{1.0F, 1.0F}), blend.x);
 		return glm::mix(top, bottom, blend.y);
 	}
 
@@ -62,7 +43,7 @@ namespace {
 	}
 } // namespace
 
-Game::Game() {
+State::State() {
 	for (i32 y = 0; y < static_cast<i32>(TERRAIN_SIZE); ++y) {
 		for (i32 x = 0; x < static_cast<i32>(TERRAIN_SIZE); ++x) {
 			const vec2 position{static_cast<f32>(x), static_cast<f32>(y)};
@@ -110,8 +91,8 @@ Game::Game() {
 				if (y >= 31) {
 					const f32 progress = std::clamp((position.y - 31.0F) / 62.0F, 0.0F, 1.0F);
 					const f32 river_center = 58.0F - progress * 20.0F +
-						std::sin(progress * 8.5F) * 3.2F +
-						std::sin(progress * 19.0F) * 1.25F;
+											 std::sin(progress * 8.5F) * 3.2F +
+											 std::sin(progress * 19.0F) * 1.25F;
 					const f32 river_width = 0.75F + progress * 1.55F;
 					if (std::abs(position.x - river_center) < river_width) {
 						kind = TileKind::WATER;
@@ -125,44 +106,8 @@ Game::Game() {
 	}
 }
 
-void Game::tick() {
+void State::tick() {
 }
 
-void Game::update() {
-	constexpr f32 PAN_SPEED = 500.0F;
-	constexpr f32 ZOOM_SPEED = 0.15F;
-	constexpr f32 MIN_ZOOM = 0.2F;
-	constexpr f32 MAX_ZOOM = 5.0F;
-	vec2 direction{0.0F};
-	if (g_input->key_down(SDL_SCANCODE_A) || g_input->key_down(SDL_SCANCODE_LEFT))
-		direction.x -= 1.0F;
-	if (g_input->key_down(SDL_SCANCODE_D) || g_input->key_down(SDL_SCANCODE_RIGHT))
-		direction.x += 1.0F;
-	if (g_input->key_down(SDL_SCANCODE_W) || g_input->key_down(SDL_SCANCODE_UP))
-		direction.y -= 1.0F;
-	if (g_input->key_down(SDL_SCANCODE_S) || g_input->key_down(SDL_SCANCODE_DOWN))
-		direction.y += 1.0F;
-	if (dot(direction, direction) > 0.0F) {
-		view_position += normalize(direction) * PAN_SPEED * g_platform->delta_time() / view_zoom;
-	}
-	if (g_input->mouse_button_down(SDL_BUTTON_MIDDLE) ||
-		g_input->mouse_button_down(SDL_BUTTON_RIGHT)) {
-		view_position -= g_input->mouse_delta() / view_zoom;
-	}
-	const f32 wheel = g_input->wheel_delta().y;
-	if (wheel != 0.0F) {
-		const vec2 mouse = g_input->mouse_position();
-		const vec2 anchor = view_position + mouse / view_zoom;
-		view_zoom = std::clamp(view_zoom * std::exp(wheel * ZOOM_SPEED), MIN_ZOOM, MAX_ZOOM);
-		view_position = anchor - mouse / view_zoom;
-	}
-	g_renderer->set_view(view_position, view_zoom);
-}
-
-void Game::draw() {
-	g_renderer->draw_terrain(terrain);
-	for (const Building& building : BUILDINGS) {
-		g_renderer->draw_building(building.origin, building.footprint, building.icon,
-			building.color);
-	}
+void State::update() {
 }

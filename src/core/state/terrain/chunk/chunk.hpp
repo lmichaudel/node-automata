@@ -1,10 +1,10 @@
 #pragma once
 
 #include "common/types.hpp"
-#include "core/terrain/tile/tile.hpp"
+#include "tile.hpp"
 
-#include <array>
 #include <algorithm>
+#include <array>
 
 constexpr usize CHUNK_SIZE = 32;
 constexpr f32 TILE_SIZE = 32.0F;
@@ -48,9 +48,8 @@ struct Chunk {
 			return;
 		}
 		Tile& tile = at(coordinate);
-		const u8 clamped = tile.kind == TileKind::WATER
-			? 0
-			: std::clamp<u8>(elevation, 1, MAX_TERRAIN_ELEVATION);
+		const u8 clamped =
+			tile.kind == TileKind::WATER ? 0 : std::clamp<u8>(elevation, 1, MAX_TERRAIN_ELEVATION);
 		if (tile.elevation == clamped) {
 			return;
 		}
