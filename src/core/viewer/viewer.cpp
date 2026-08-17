@@ -64,40 +64,70 @@ namespace {
 		}
 	}
 
-	void draw_inserter_socket(vec2 center, vec2 machine, vec2 belt, f32 animation) {
-		constexpr f32 PI = 3.14159265358979323846F;
-		constexpr f32 TWO_PI = PI * 2.0F;
-		const vec4 shadow = rgba(24, 29, 35);
-		const vec4 shell = rgba(229, 209, 163);
-		const vec4 pivot = rgba(224, 146, 55);
-		const vec4 status = rgba(89, 220, 225);
-
-		const vec2 machine_direction = glm::normalize(machine - center);
-		const f32 machine_angle = std::atan2(machine_direction.y, machine_direction.x);
-		const vec2 belt_direction = glm::normalize(belt - center);
-		const f32 belt_angle = std::atan2(belt_direction.y, belt_direction.x);
-		f32 sweep = belt_angle - machine_angle;
-		while (sweep > PI)
-			sweep -= TWO_PI;
-		while (sweep < -PI)
-			sweep += TWO_PI;
-		const f32 angle = machine_angle + sweep * animation;
-		const vec2 direction{std::cos(angle), std::sin(angle)};
+	void draw_socket(vec2 center, vec2 machine, vec2 belt, bool building_to_belt) {
+		const vec4 shadow = rgba(17, 22, 28);
+		const vec4 casing = rgba(94, 105, 105);
+		const vec4 face = rgba(223, 211, 174);
+		const vec4 recess = rgba(42, 51, 57);
+		const vec4 direction_color = building_to_belt ? rgba(89, 220, 225)
+											 : rgba(235, 166, 79);
+		const vec2 direction = glm::normalize(belt - machine) *
+			(building_to_belt ? 1.0F : -1.0F);
 		const vec2 normal{-direction.y, direction.x};
-		const vec2 wrist = center + direction * 12.0F;
-		const vec2 claw = center + direction * 17.0F;
+		const vec2 arrow_tip = center + direction * 5.0F;
+		const vec2 arrow_tail = center - direction * 4.5F;
 
-		g_renderer->draw_circle(center + vec2{1.5F, 2.0F}, 11.0F, shadow);
-		g_renderer->draw_circle(center, 9.0F, shell, 1.5F, shadow);
-		g_renderer->draw_circle(center + vec2{0.0F, 7.0F}, 2.1F, status);
-		g_renderer->draw_capsule(center, wrist, 7.0F, shadow);
-		g_renderer->draw_capsule(center, wrist, 4.5F, shell);
-		g_renderer->draw_capsule(wrist + normal * 3.5F, claw + normal * 5.0F, 4.5F, shadow);
-		g_renderer->draw_capsule(wrist - normal * 3.5F, claw - normal * 5.0F, 4.5F, shadow);
-		g_renderer->draw_capsule(wrist + normal * 3.5F, claw + normal * 5.0F, 2.6F, pivot);
-		g_renderer->draw_capsule(wrist - normal * 3.5F, claw - normal * 5.0F, 2.6F, pivot);
-		g_renderer->draw_circle(center, 5.3F, pivot, 1.4F, shadow);
-		g_renderer->draw_circle(center, 2.4F, shell);
+		// A short tongue makes the socket feel physically attached to the machine.
+		g_renderer->draw_capsule(center - direction * 15.0F, center - direction * 9.0F, 8.0F,
+								 casing);
+		g_renderer->draw_rounded_rect(center - vec2{14.0F, 10.5F} + vec2{1.5F, 2.0F},
+									  vec2{28.0F, 21.0F}, 4.0F, shadow);
+		g_renderer->draw_rounded_rect(center - vec2{14.0F, 10.5F}, vec2{28.0F, 21.0F}, 4.0F,
+									  casing, 1.5F, shadow);
+		g_renderer->draw_rounded_rect(center - vec2{10.5F, 7.0F}, vec2{21.0F, 14.0F}, 2.5F,
+									  face);
+		g_renderer->draw_rounded_rect(center - vec2{7.5F, 4.5F}, vec2{15.0F, 9.0F}, 2.0F,
+									  recess);
+
+		g_renderer->draw_capsule(arrow_tail, arrow_tip, 2.4F, direction_color);
+		g_renderer->draw_capsule(arrow_tip, arrow_tip - direction * 4.0F + normal * 3.5F, 2.4F,
+								 direction_color);
+		g_renderer->draw_capsule(arrow_tip, arrow_tip - direction * 4.0F - normal * 3.5F, 2.4F,
+								 direction_color);
+		g_renderer->draw_circle(center + normal * 8.5F, 1.6F, shadow);
+		g_renderer->draw_circle(center - normal * 8.5F, 1.6F, shadow);
+	}
+
+	i32 connection_count(u8 connections) {
+		i32 count = 0;
+		for (; connections != 0; connections >>= 1U)
+			count += connections & 1U;
+		return count;
+	}
+
+	void draw_junction(const Belt& belt) {
+		const vec2 center = State::hex_to_world(belt.cell);
+		const vec4 shadow = rgba(17, 23, 29);
+		const vec4 body = rgba(61, 76, 86);
+		const vec4 input_color = rgba(235, 166, 79);
+		const vec4 output_color = rgba(89, 220, 225);
+
+		g_renderer->draw_hex(center + vec2{1.5F, 2.0F}, 23.5F, shadow);
+		g_renderer->draw_hex(center, 21.5F, body, 2.0F, rgba(191, 205, 195));
+		for (usize direction = 0; direction < HEX_DIRECTIONS.size(); ++direction) {
+			const u8 mask = static_cast<u8>(1U << direction);
+			if ((belt.inputs & mask) == 0 && (belt.outputs & mask) == 0)
+				continue;
+			const vec2 neighbor = State::hex_to_world(belt.cell + HEX_DIRECTIONS[direction]);
+			const vec2 outward = glm::normalize(neighbor - center);
+			const bool output = (belt.outputs & mask) != 0;
+			const vec4 color = output ? output_color : input_color;
+			g_renderer->draw_capsule(center + outward * 5.0F, center + outward * 16.0F, 4.0F,
+									 color);
+			g_renderer->draw_circle(center + outward * 16.0F, 3.5F, color);
+		}
+		g_renderer->draw_circle(center, 6.5F, rgba(31, 39, 47), 1.5F,
+								rgba(191, 205, 195));
 	}
 } // namespace
 
@@ -241,11 +271,13 @@ void Viewer::draw() {
 		}
 	}
 
-	const f32 inserter_animation =
-		0.5F - 0.5F * std::cos(static_cast<f32>(state.simulation_ticks()) * 0.09F);
+	for (const Belt& belt : state.get_belts())
+		if (connection_count(belt.inputs) > 1 || connection_count(belt.outputs) > 1)
+			draw_junction(belt);
+
 	for (const RenderEndpoint& render_endpoint : render_endpoints)
-		draw_inserter_socket(render_endpoint.socket, render_endpoint.machine,
-							 render_endpoint.belt, inserter_animation);
+		draw_socket(render_endpoint.socket, render_endpoint.machine, render_endpoint.belt,
+					render_endpoint.endpoint->building_to_belt);
 
 	for (const Belt& belt : state.get_belts()) {
 		if (!belt.item)

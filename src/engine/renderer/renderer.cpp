@@ -2,87 +2,56 @@
 #include "common/log.hpp"
 
 #include <SDL3/SDL.h>
-#include <SDL3_image/SDL_image.h>
+#include <blend2d.h>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstring>
 #include <string>
 
-namespace {
-	struct Vertex {
-		vec2 corner;
-		vec2 uv;
-	};
-	struct alignas(16) CameraUniform {
-		vec2 viewport_size;
-		vec2 view_position;
-		f32 zoom;
-		vec3 padding{0.0F};
-	};
-	constexpr std::array<Vertex, 4> VERTICES{{
-		{{-0.5F, -0.5F}, {0.0F, 0.0F}},
-		{{0.5F, -0.5F}, {1.0F, 0.0F}},
-		{{0.5F, 0.5F}, {1.0F, 1.0F}},
-		{{-0.5F, 0.5F}, {0.0F, 1.0F}},
-	}};
-	constexpr std::array<u16, 6> INDICES{{0, 1, 2, 0, 2, 3}};
+struct Renderer::Impl {
+	static constexpr usize ICON_COUNT = static_cast<usize>(SpriteIcon::Count);
 
-	const char* shader_extension() {
-#if defined(__APPLE__)
-		return "msl";
-#elif defined(_WIN32)
-		return "dxil";
-#else
-		return "spv";
-#endif
+	BLImage framebuffer{};
+	BLContext context{};
+	std::array<BLImage, ICON_COUNT> icons{};
+	SDL_Surface* present_surface{nullptr};
+	i32 width{0};
+	i32 height{0};
+	bool drawing{false};
+};
+
+namespace {
+	u8 channel(f32 value) {
+		return static_cast<u8>(std::round(std::clamp(value, 0.0F, 1.0F) * 255.0F));
 	}
-	const char* shader_entrypoint() {
-#if defined(__APPLE__)
-		return "main0";
-#else
-		return "main";
-#endif
+
+	BLRgba32 bl_color(vec4 value) {
+		return BLRgba32(channel(value.r), channel(value.g), channel(value.b), channel(value.a));
 	}
-	SDL_GPUShaderFormat shader_format() {
-#if defined(__APPLE__)
-		return SDL_GPU_SHADERFORMAT_MSL;
-#elif defined(_WIN32)
-		return SDL_GPU_SHADERFORMAT_DXIL;
-#else
-		return SDL_GPU_SHADERFORMAT_SPIRV;
-#endif
+
+	BLPoint point(vec2 value) {
+		return BLPoint{static_cast<f64>(value.x), static_cast<f64>(value.y)};
 	}
-	SDL_GPUShader* load_shader(SDL_GPUDevice* device, const char* name, SDL_GPUShaderStage stage,
-							   u32 uniforms, u32 samplers) {
-		const std::string filename = std::string{name} + "." + shader_extension();
-		const char* base = SDL_GetBasePath();
-		const std::string path = std::string{base != nullptr ? base : ""} + "shaders/" + filename;
-		size_t size = 0;
-		void* data = SDL_LoadFile(path.c_str(), &size);
-		if (data == nullptr) {
-			log::error("Failed to load shader {}: {}", filename, SDL_GetError());
-			return nullptr;
+
+	BLPath hex_path(vec2 center, f32 radius) {
+		constexpr f64 PI = 3.14159265358979323846;
+		BLPath path;
+		for (i32 index = 0; index < 6; ++index) {
+			const f64 angle = -PI * 0.5 + static_cast<f64>(index) * PI / 3.0;
+			const f64 x = static_cast<f64>(center.x) + std::cos(angle) * radius;
+			const f64 y = static_cast<f64>(center.y) + std::sin(angle) * radius;
+			if (index == 0)
+				path.moveTo(x, y);
+			else
+				path.lineTo(x, y);
 		}
-		const SDL_GPUShaderCreateInfo info{
-			.code_size = size,
-			.code = static_cast<const u8*>(data),
-			.entrypoint = shader_entrypoint(),
-			.format = shader_format(),
-			.stage = stage,
-			.num_samplers = samplers,
-			.num_storage_textures = 0,
-			.num_storage_buffers = 0,
-			.num_uniform_buffers = uniforms,
-		};
-		SDL_GPUShader* shader = SDL_CreateGPUShader(device, &info);
-		SDL_free(data);
-		if (shader == nullptr)
-			log::error("Failed to create shader {}: {}", filename, SDL_GetError());
-		return shader;
+		path.close();
+		return path;
 	}
 } // namespace
+
+Renderer::Renderer() = default;
 
 Renderer::~Renderer() {
 	release();
@@ -90,230 +59,18 @@ Renderer::~Renderer() {
 
 bool Renderer::init(SDL_Window* target_window) {
 	window = target_window;
-	instances.reserve(MAX_INSTANCES);
-	commands.reserve(256);
-#if defined(NDEBUG)
-	constexpr bool DEBUG_DEVICE = false;
-#else
-	constexpr bool DEBUG_DEVICE = true;
-#endif
-	device = SDL_CreateGPUDevice(shader_format(), DEBUG_DEVICE, nullptr);
-	if (device == nullptr || !SDL_ClaimWindowForGPUDevice(device, window)) {
-		log::error("Failed to initialize SDL_gpu: {}", SDL_GetError());
+	impl = new Impl{};
+	if (!load_images()) {
 		release();
 		return false;
 	}
-	if (!create_pipeline() || !create_buffers() || !upload_static_geometry() || !load_textures()) {
-		release();
-		return false;
-	}
-	log::info("Hex Factory renderer initialized with {}", SDL_GetGPUDeviceDriver(device));
+	SDL_SetWindowSurfaceVSync(window, 1);
+	log::info("Hex Factory renderer initialized with Blend2D");
 	return true;
 }
 
-bool Renderer::create_pipeline() {
-	SDL_GPUShader* vertex = load_shader(device, "factory.vert", SDL_GPU_SHADERSTAGE_VERTEX, 1, 0);
-	SDL_GPUShader* fragment =
-		load_shader(device, "factory.frag", SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 1);
-	if (vertex == nullptr || fragment == nullptr) {
-		if (vertex)
-			SDL_ReleaseGPUShader(device, vertex);
-		if (fragment)
-			SDL_ReleaseGPUShader(device, fragment);
-		return false;
-	}
-	const std::array<SDL_GPUVertexBufferDescription, 2> descriptions{{
-		{.slot = 0, .pitch = sizeof(Vertex), .input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX},
-		{.slot = 1, .pitch = sizeof(Instance), .input_rate = SDL_GPU_VERTEXINPUTRATE_INSTANCE},
-	}};
-	const std::array<SDL_GPUVertexAttribute, 7> attributes{{
-		{.location = 0,
-		 .buffer_slot = 0,
-		 .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
-		 .offset = offsetof(Vertex, corner)},
-		{.location = 1,
-		 .buffer_slot = 0,
-		 .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
-		 .offset = offsetof(Vertex, uv)},
-		{.location = 2,
-		 .buffer_slot = 1,
-		 .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
-		 .offset = offsetof(Instance, center)},
-		{.location = 3,
-		 .buffer_slot = 1,
-		 .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2,
-		 .offset = offsetof(Instance, size)},
-		{.location = 4,
-		 .buffer_slot = 1,
-		 .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
-		 .offset = offsetof(Instance, color)},
-		{.location = 5,
-		 .buffer_slot = 1,
-		 .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
-		 .offset = offsetof(Instance, parameters)},
-		{.location = 6,
-		 .buffer_slot = 1,
-		 .format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,
-		 .offset = offsetof(Instance, auxiliary)},
-	}};
-	const SDL_GPUVertexInputState input{
-		.vertex_buffer_descriptions = descriptions.data(),
-		.num_vertex_buffers = static_cast<u32>(descriptions.size()),
-		.vertex_attributes = attributes.data(),
-		.num_vertex_attributes = static_cast<u32>(attributes.size()),
-	};
-	const SDL_GPUColorTargetDescription target{
-		.format = SDL_GetGPUSwapchainTextureFormat(device, window),
-		.blend_state =
-			{
-				.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA,
-				.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-				.color_blend_op = SDL_GPU_BLENDOP_ADD,
-				.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE,
-				.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-				.alpha_blend_op = SDL_GPU_BLENDOP_ADD,
-				.enable_blend = true,
-			},
-	};
-	const SDL_GPUGraphicsPipelineCreateInfo info{
-		.vertex_shader = vertex,
-		.fragment_shader = fragment,
-		.vertex_input_state = input,
-		.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
-		.rasterizer_state = {.fill_mode = SDL_GPU_FILLMODE_FILL,
-							 .cull_mode = SDL_GPU_CULLMODE_NONE,
-							 .front_face = SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE},
-		.multisample_state = {.sample_count = SDL_GPU_SAMPLECOUNT_1},
-		.target_info = {.color_target_descriptions = &target, .num_color_targets = 1},
-	};
-	pipeline = SDL_CreateGPUGraphicsPipeline(device, &info);
-	SDL_ReleaseGPUShader(device, vertex);
-	SDL_ReleaseGPUShader(device, fragment);
-	if (pipeline == nullptr)
-		log::error("Failed to create factory pipeline: {}", SDL_GetError());
-	return pipeline != nullptr;
-}
-
-bool Renderer::create_buffers() {
-	const SDL_GPUBufferCreateInfo vertex_info{.usage = SDL_GPU_BUFFERUSAGE_VERTEX,
-											  .size = sizeof(VERTICES)};
-	const SDL_GPUBufferCreateInfo index_info{.usage = SDL_GPU_BUFFERUSAGE_INDEX,
-											 .size = sizeof(INDICES)};
-	const SDL_GPUBufferCreateInfo instance_info{
-		.usage = SDL_GPU_BUFFERUSAGE_VERTEX,
-		.size = static_cast<u32>(MAX_INSTANCES * sizeof(Instance))};
-	const SDL_GPUTransferBufferCreateInfo transfer_info{.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-														.size = instance_info.size};
-	vertex_buffer = SDL_CreateGPUBuffer(device, &vertex_info);
-	index_buffer = SDL_CreateGPUBuffer(device, &index_info);
-	instance_buffer = SDL_CreateGPUBuffer(device, &instance_info);
-	transfer_buffer = SDL_CreateGPUTransferBuffer(device, &transfer_info);
-	const SDL_GPUSamplerCreateInfo sampler_info{
-		.min_filter = SDL_GPU_FILTER_LINEAR,
-		.mag_filter = SDL_GPU_FILTER_LINEAR,
-		.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
-		.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-		.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-		.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
-	};
-	sampler = SDL_CreateGPUSampler(device, &sampler_info);
-	if (!vertex_buffer || !index_buffer || !instance_buffer || !transfer_buffer || !sampler)
-		log::error("Failed to allocate renderer buffers: {}", SDL_GetError());
-	return vertex_buffer && index_buffer && instance_buffer && transfer_buffer && sampler;
-}
-
-bool Renderer::upload_static_geometry() {
-	void* mapped = SDL_MapGPUTransferBuffer(device, transfer_buffer, false);
-	if (!mapped)
-		return false;
-	std::memcpy(mapped, VERTICES.data(), sizeof(VERTICES));
-	std::memcpy(static_cast<u8*>(mapped) + sizeof(VERTICES), INDICES.data(), sizeof(INDICES));
-	SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
-	SDL_GPUCommandBuffer* command = SDL_AcquireGPUCommandBuffer(device);
-	if (!command)
-		return false;
-	SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(command);
-	const SDL_GPUTransferBufferLocation vertex_source{.transfer_buffer = transfer_buffer,
-													  .offset = 0};
-	const SDL_GPUBufferRegion vertex_dest{
-		.buffer = vertex_buffer, .offset = 0, .size = sizeof(VERTICES)};
-	SDL_UploadToGPUBuffer(copy, &vertex_source, &vertex_dest, false);
-	const SDL_GPUTransferBufferLocation index_source{.transfer_buffer = transfer_buffer,
-													 .offset = sizeof(VERTICES)};
-	const SDL_GPUBufferRegion index_dest{
-		.buffer = index_buffer, .offset = 0, .size = sizeof(INDICES)};
-	SDL_UploadToGPUBuffer(copy, &index_source, &index_dest, false);
-	SDL_EndGPUCopyPass(copy);
-	return SDL_SubmitGPUCommandBuffer(command);
-}
-
-bool Renderer::upload_texture(Texture& texture, u32 width, u32 height, const u8* pixels) {
-	const u32 bytes = width * height * 4;
-	const SDL_GPUTextureCreateInfo texture_info{.type = SDL_GPU_TEXTURETYPE_2D,
-												.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-												.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER,
-												.width = width,
-												.height = height,
-												.layer_count_or_depth = 1,
-												.num_levels = 1,
-												.sample_count = SDL_GPU_SAMPLECOUNT_1};
-	SDL_GPUTexture* handle = SDL_CreateGPUTexture(device, &texture_info);
-	const SDL_GPUTransferBufferCreateInfo upload_info{.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
-													  .size = bytes};
-	SDL_GPUTransferBuffer* upload = SDL_CreateGPUTransferBuffer(device, &upload_info);
-	if (!handle || !upload)
-		return false;
-	void* mapped = SDL_MapGPUTransferBuffer(device, upload, false);
-	if (!mapped)
-		return false;
-	std::memcpy(mapped, pixels, bytes);
-	SDL_UnmapGPUTransferBuffer(device, upload);
-	SDL_GPUCommandBuffer* command = SDL_AcquireGPUCommandBuffer(device);
-	SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(command);
-	const SDL_GPUTextureTransferInfo source{
-		.transfer_buffer = upload, .pixels_per_row = width, .rows_per_layer = height};
-	const SDL_GPUTextureRegion destination{.texture = handle, .w = width, .h = height, .d = 1};
-	SDL_UploadToGPUTexture(copy, &source, &destination, false);
-	SDL_EndGPUCopyPass(copy);
-	const bool success = SDL_SubmitGPUCommandBuffer(command);
-	SDL_ReleaseGPUTransferBuffer(device, upload);
-	if (!success) {
-		SDL_ReleaseGPUTexture(device, handle);
-		return false;
-	}
-	texture.handle = handle;
-	return true;
-}
-
-bool Renderer::load_texture(Texture& texture, const char* relative_path) {
-	const char* base = SDL_GetBasePath();
-	const std::string path = std::string{base != nullptr ? base : ""} + "res/" + relative_path;
-	SDL_Surface* loaded = IMG_Load(path.c_str());
-	if (!loaded) {
-		log::error("Failed to load {}: {}", relative_path, SDL_GetError());
-		return false;
-	}
-	SDL_Surface* rgba = SDL_ConvertSurface(loaded, SDL_PIXELFORMAT_RGBA32);
-	SDL_DestroySurface(loaded);
-	if (!rgba)
-		return false;
-	const usize row_bytes = static_cast<usize>(rgba->w) * 4;
-	std::vector<u8> pixels(row_bytes * static_cast<usize>(rgba->h));
-	for (i32 row = 0; row < rgba->h; ++row)
-		std::memcpy(pixels.data() + static_cast<usize>(row) * row_bytes,
-					static_cast<const u8*>(rgba->pixels) + static_cast<usize>(row) * rgba->pitch,
-					row_bytes);
-	const bool result = upload_texture(texture, static_cast<u32>(rgba->w),
-									   static_cast<u32>(rgba->h), pixels.data());
-	SDL_DestroySurface(rgba);
-	return result;
-}
-
-bool Renderer::load_textures() {
-	constexpr std::array<u8, 4> WHITE{{255, 255, 255, 255}};
-	if (!upload_texture(white_texture, 1, 1, WHITE.data()))
-		return false;
-	constexpr std::array<const char*, ICON_COUNT> PATHS{{
+bool Renderer::load_images() {
+	constexpr std::array<const char*, Impl::ICON_COUNT> PATHS{{
 		"sprites/ore.png",
 		"sprites/gear.png",
 		"sprites/ingot.png",
@@ -321,16 +78,54 @@ bool Renderer::load_textures() {
 		"sprites/propeller.png",
 		"sprites/smelter.png",
 	}};
-	for (usize index = 0; index < PATHS.size(); ++index)
-		if (!load_texture(icons[index], PATHS[index]))
+	const char* base = SDL_GetBasePath();
+	for (usize index = 0; index < PATHS.size(); ++index) {
+		const std::string path = std::string{base != nullptr ? base : ""} + "res/" + PATHS[index];
+		if (impl->icons[index].readFromFile(path.c_str()) != BL_SUCCESS) {
+			log::error("Blend2D failed to load {}", path);
 			return false;
+		}
+	}
+	return true;
+}
+
+bool Renderer::resize_framebuffer(i32 width, i32 height) {
+	if (width <= 0 || height <= 0)
+		return false;
+	if (impl->width == width && impl->height == height && impl->present_surface)
+		return true;
+	if (impl->present_surface) {
+		SDL_DestroySurface(impl->present_surface);
+		impl->present_surface = nullptr;
+	}
+	if (impl->framebuffer.create(width, height, BL_FORMAT_PRGB32) != BL_SUCCESS)
+		return false;
+	BLImageData data{};
+	if (impl->framebuffer.makeMutable(&data) != BL_SUCCESS)
+		return false;
+	impl->present_surface = SDL_CreateSurfaceFrom(width, height, SDL_PIXELFORMAT_BGRA32,
+											data.pixelData, static_cast<i32>(data.stride));
+	if (!impl->present_surface) {
+		log::error("Failed to create Blend2D presentation surface: {}", SDL_GetError());
+		return false;
+	}
+	impl->width = width;
+	impl->height = height;
 	return true;
 }
 
 void Renderer::begin_frame(vec4 clear) {
-	clear_color = clear;
-	instances.clear();
-	commands.clear();
+	if (!impl || !window)
+		return;
+	SDL_Surface* window_surface = SDL_GetWindowSurface(window);
+	if (!window_surface || !resize_framebuffer(window_surface->w, window_surface->h))
+		return;
+	if (impl->context.begin(impl->framebuffer) != BL_SUCCESS)
+		return;
+	impl->drawing = true;
+	impl->context.setCompOp(BL_COMP_OP_SRC_COPY);
+	impl->context.fillAll(bl_color(clear));
+	impl->context.setCompOp(BL_COMP_OP_SRC_OVER);
 }
 
 void Renderer::set_view(vec2 position, f32 zoom) {
@@ -338,146 +133,113 @@ void Renderer::set_view(vec2 position, f32 zoom) {
 	view_zoom = std::max(zoom, 0.001F);
 }
 
-void Renderer::queue(SDL_GPUTexture* texture, const Instance& instance) {
-	if (!texture || instances.size() >= MAX_INSTANCES || instance.size.x <= 0.0F ||
-		instance.size.y <= 0.0F)
-		return;
-	const u32 index = static_cast<u32>(instances.size());
-	instances.push_back(instance);
-	if (!commands.empty() && commands.back().texture == texture &&
-		commands.back().first + commands.back().count == index)
-		++commands.back().count;
-	else
-		commands.push_back({texture, index, 1});
+vec2 Renderer::to_screen(vec2 value) const {
+	return (value - view_position) * view_zoom;
 }
 
 void Renderer::draw_hex(vec2 center, f32 radius, vec4 fill, f32 border_width, vec4 border) {
-	queue(white_texture.handle, {center, vec2{radius * 2.0F}, fill,
-								 vec4{1.0F, 0.0F, std::max(border_width, 0.0F), 0.0F}, border});
+	if (!impl || !impl->drawing || radius <= 0.0F)
+		return;
+	const vec2 screen_center = to_screen(center);
+	const f32 screen_radius = radius * view_zoom;
+	const f32 screen_border = std::max(border_width, 0.0F) * view_zoom;
+	if (screen_border > 0.0F)
+		impl->context.fillPath(hex_path(screen_center, screen_radius), bl_color(border));
+	const f32 inner_radius = std::max(screen_radius - screen_border, 0.0F);
+	if (inner_radius > 0.0F)
+		impl->context.fillPath(hex_path(screen_center, inner_radius), bl_color(fill));
 }
 
 void Renderer::draw_circle(vec2 center, f32 radius, vec4 fill, f32 border_width, vec4 border) {
-	queue(white_texture.handle, {center, vec2{radius * 2.0F}, fill,
-								 vec4{2.0F, 0.0F, std::max(border_width, 0.0F), 0.0F}, border});
-}
-
-void Renderer::draw_capsule(vec2 start, vec2 end, f32 width, vec4 color) {
-	const vec2 delta = end - start;
-	const f32 length = glm::length(delta);
-	if (length <= 0.001F)
+	if (!impl || !impl->drawing || radius <= 0.0F)
 		return;
-	queue(white_texture.handle, {(start + end) * 0.5F,
-								 {length, width},
-								 color,
-								 vec4{3.0F, std::atan2(delta.y, delta.x), 0.0F, 0.0F},
-								 vec4{0.0F}});
+	const vec2 screen_center = to_screen(center);
+	const f32 screen_radius = radius * view_zoom;
+	const f32 screen_border = std::max(border_width, 0.0F) * view_zoom;
+	if (screen_border > 0.0F)
+		impl->context.fillCircle(screen_center.x, screen_center.y, screen_radius, bl_color(border));
+	const f32 inner_radius = std::max(screen_radius - screen_border, 0.0F);
+	if (inner_radius > 0.0F)
+		impl->context.fillCircle(screen_center.x, screen_center.y, inner_radius, bl_color(fill));
 }
 
-void Renderer::draw_rounded_rect(vec2 origin, vec2 size, f32 radius, vec4 fill, f32 border_width,
-								 vec4 border) {
-	queue(white_texture.handle,
-		  {origin + size * 0.5F, size, fill,
-		   vec4{4.0F, 0.0F, std::max(border_width, 0.0F), std::max(radius, 0.0F)}, border});
+void Renderer::draw_capsule(vec2 start, vec2 end, f32 width, vec4 fill) {
+	if (!impl || !impl->drawing || width <= 0.0F)
+		return;
+	const vec2 screen_start = to_screen(start);
+	const vec2 screen_end = to_screen(end);
+	impl->context.setStrokeWidth(width * view_zoom);
+	impl->context.setStrokeCaps(BL_STROKE_CAP_ROUND);
+	impl->context.strokeLine(point(screen_start), point(screen_end), bl_color(fill));
+}
+
+void Renderer::draw_rounded_rect(vec2 origin, vec2 size, f32 radius, vec4 fill,
+								 f32 border_width, vec4 border) {
+	if (!impl || !impl->drawing || size.x <= 0.0F || size.y <= 0.0F)
+		return;
+	const vec2 screen_origin = to_screen(origin);
+	const vec2 screen_size = size * view_zoom;
+	const f32 screen_radius = std::max(radius, 0.0F) * view_zoom;
+	const f32 screen_border = std::max(border_width, 0.0F) * view_zoom;
+	if (screen_border > 0.0F)
+		impl->context.fillRoundRect(screen_origin.x, screen_origin.y, screen_size.x,
+									screen_size.y, screen_radius, screen_radius, bl_color(border));
+	const vec2 inner_size = screen_size - vec2{screen_border * 2.0F};
+	if (inner_size.x > 0.0F && inner_size.y > 0.0F)
+		impl->context.fillRoundRect(screen_origin.x + screen_border,
+									screen_origin.y + screen_border, inner_size.x, inner_size.y,
+									std::max(screen_radius - screen_border, 0.0F),
+									std::max(screen_radius - screen_border, 0.0F), bl_color(fill));
 }
 
 void Renderer::draw_sprite(SpriteIcon icon, vec2 center, vec2 size, vec4 tint) {
+	if (!impl || !impl->drawing || size.x <= 0.0F || size.y <= 0.0F)
+		return;
 	const usize index = static_cast<usize>(icon);
-	if (index < icons.size())
-		queue(icons[index].handle, {center, size, tint, vec4{0.0F}, vec4{0.0F}});
+	if (index >= impl->icons.size())
+		return;
+	const vec2 screen_center = to_screen(center);
+	const vec2 screen_size = size * view_zoom;
+	const i32 width = std::max(static_cast<i32>(std::round(screen_size.x)), 1);
+	const i32 height = std::max(static_cast<i32>(std::round(screen_size.y)), 1);
+	BLImage scaled;
+	if (BLImage::scale(scaled, impl->icons[index], BLSizeI{width, height},
+					   BL_IMAGE_SCALE_FILTER_BILINEAR) != BL_SUCCESS)
+		return;
+	BLImage tinted{width, height, BL_FORMAT_PRGB32};
+	BLContext tint_context{tinted};
+	tint_context.setCompOp(BL_COMP_OP_SRC_COPY);
+	tint_context.fillAll(bl_color(tint));
+	tint_context.setCompOp(BL_COMP_OP_DST_IN);
+	tint_context.blitImage(BLPointI{0, 0}, scaled);
+	tint_context.end();
+	impl->context.blitImage(BLPoint{screen_center.x - width * 0.5,
+									screen_center.y - height * 0.5}, tinted);
 }
 
 bool Renderer::end_frame() {
-	SDL_GPUCommandBuffer* command = SDL_AcquireGPUCommandBuffer(device);
-	if (!command)
+	if (!impl || !impl->drawing)
 		return false;
-	if (!instances.empty()) {
-		const u32 bytes = static_cast<u32>(instances.size() * sizeof(Instance));
-		void* mapped = SDL_MapGPUTransferBuffer(device, transfer_buffer, true);
-		if (!mapped) {
-			SDL_CancelGPUCommandBuffer(command);
-			return false;
-		}
-		std::memcpy(mapped, instances.data(), bytes);
-		SDL_UnmapGPUTransferBuffer(device, transfer_buffer);
-		SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(command);
-		const SDL_GPUTransferBufferLocation source{.transfer_buffer = transfer_buffer, .offset = 0};
-		const SDL_GPUBufferRegion destination{
-			.buffer = instance_buffer, .offset = 0, .size = bytes};
-		SDL_UploadToGPUBuffer(copy, &source, &destination, true);
-		SDL_EndGPUCopyPass(copy);
-	}
-	SDL_GPUTexture* swapchain = nullptr;
-	u32 width = 0, height = 0;
-	if (!SDL_WaitAndAcquireGPUSwapchainTexture(command, window, &swapchain, &width, &height)) {
-		SDL_CancelGPUCommandBuffer(command);
+	impl->context.end();
+	impl->drawing = false;
+	SDL_Surface* window_surface = SDL_GetWindowSurface(window);
+	if (!window_surface || !SDL_BlitSurface(impl->present_surface, nullptr, window_surface, nullptr)) {
+		log::error("Failed to present Blend2D framebuffer: {}", SDL_GetError());
 		return false;
 	}
-	if (!swapchain)
-		return SDL_SubmitGPUCommandBuffer(command);
-	const SDL_GPUColorTargetInfo target{
-		.texture = swapchain,
-		.clear_color = {clear_color.r, clear_color.g, clear_color.b, clear_color.a},
-		.load_op = SDL_GPU_LOADOP_CLEAR,
-		.store_op = SDL_GPU_STOREOP_STORE};
-	SDL_GPURenderPass* pass = SDL_BeginGPURenderPass(command, &target, 1, nullptr);
-	if (!instances.empty()) {
-		SDL_BindGPUGraphicsPipeline(pass, pipeline);
-		const CameraUniform camera{
-			{static_cast<f32>(width), static_cast<f32>(height)}, view_position, view_zoom};
-		SDL_PushGPUVertexUniformData(command, 0, &camera, sizeof(camera));
-		const std::array<SDL_GPUBufferBinding, 2> bindings{{
-			{.buffer = vertex_buffer, .offset = 0},
-			{.buffer = instance_buffer, .offset = 0},
-		}};
-		SDL_BindGPUVertexBuffers(pass, 0, bindings.data(), static_cast<u32>(bindings.size()));
-		const SDL_GPUBufferBinding index_binding{.buffer = index_buffer, .offset = 0};
-		SDL_BindGPUIndexBuffer(pass, &index_binding, SDL_GPU_INDEXELEMENTSIZE_16BIT);
-		for (const DrawCommand& draw : commands) {
-			const SDL_GPUTextureSamplerBinding texture{.texture = draw.texture, .sampler = sampler};
-			SDL_BindGPUFragmentSamplers(pass, 0, &texture, 1);
-			SDL_DrawGPUIndexedPrimitives(pass, static_cast<u32>(INDICES.size()), draw.count, 0, 0,
-										 draw.first);
-		}
-	}
-	SDL_EndGPURenderPass(pass);
-	return SDL_SubmitGPUCommandBuffer(command);
+	return SDL_UpdateWindowSurface(window);
 }
 
 void Renderer::release() {
-	if (!device) {
+	if (!impl) {
 		window = nullptr;
 		return;
 	}
-	SDL_WaitForGPUIdle(device);
-	for (Texture& icon : icons) {
-		if (icon.handle)
-			SDL_ReleaseGPUTexture(device, icon.handle);
-		icon = {};
-	}
-	if (white_texture.handle)
-		SDL_ReleaseGPUTexture(device, white_texture.handle);
-	if (sampler)
-		SDL_ReleaseGPUSampler(device, sampler);
-	if (transfer_buffer)
-		SDL_ReleaseGPUTransferBuffer(device, transfer_buffer);
-	if (instance_buffer)
-		SDL_ReleaseGPUBuffer(device, instance_buffer);
-	if (index_buffer)
-		SDL_ReleaseGPUBuffer(device, index_buffer);
-	if (vertex_buffer)
-		SDL_ReleaseGPUBuffer(device, vertex_buffer);
-	if (pipeline)
-		SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
-	if (window)
-		SDL_ReleaseWindowFromGPUDevice(device, window);
-	SDL_DestroyGPUDevice(device);
+	if (impl->drawing)
+		impl->context.end();
+	if (impl->present_surface)
+		SDL_DestroySurface(impl->present_surface);
+	delete impl;
+	impl = nullptr;
 	window = nullptr;
-	device = nullptr;
-	pipeline = nullptr;
-	vertex_buffer = nullptr;
-	index_buffer = nullptr;
-	instance_buffer = nullptr;
-	transfer_buffer = nullptr;
-	sampler = nullptr;
-	white_texture = {};
 }
